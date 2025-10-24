@@ -1,194 +1,138 @@
-from rest_framework import viewsets
-from rest_framework.response import Response
+
+from rest_framework import viewsets  # es un modulo de django que te permite crear vistas para Apis de manera rapida y reduciendo codigo
+
+from .models import*
+from .serializers import*
+
 from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
 
-from .models import (
-    Categoria, Producto, Proveedor,
-    Cliente, Empleado, FacturaVenta,
-    DetalleVenta, Movimiento
-)
-from .serializers import (
-    CategoriaSerializer, ProductoSerializer, ProveedorSerializer,
-    ClienteSerializer, EmpleadoSerializer, FacturaVentaSerializer,
-    DetalleVentaSerializer, MovimientoSerializer
-)
+# - Importamos los permisos personalizados desde la nueva carpeta 'permissions'.
+# - Mantenemos IsAuthenticated para asegurar JWT.
+from rest_framework.permissions import IsAuthenticated
+from .permissions import * # Nuevos imports de permisos personalizados
 
-class CategoriaViewset(viewsets.ModelViewSet):
+
+from django.http import HttpResponse
+from .pdf import *
+from rest_framework.decorators import action
+
+class CategoriaViewSet(viewsets.ModelViewSet):
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('nombre', openapi.IN_QUERY, description="Filtra categorías por nombre", type=openapi.TYPE_STRING),
-        ]
+        operation_description="Listar todas las categorias disponibles en el sistema ",  # descripcion de la operacion
+        responses={200: CategoriaSerializer(many=True)} # many = True: va iterar  sobre una lista de objetos de categoriaSerialzer
     )
     def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        nombre = request.query_params.get('nombre')
-        if nombre:
-            queryset = queryset.filter(nombre__icontains=nombre)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+        return super().list(request, *args, **kwargs)
+     
+    @swagger_auto_schema(
+        operation_description="Crea una nueva categoría en el sistema.",  # Descripción de la operación
+        request_body=CategoriaSerializer,  # Cuerpo de la solicitud
+        responses={201: CategoriaSerializer()}  # 201 Respuesta esperada
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
 class ProductoViewset(viewsets.ModelViewSet):
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
+    
+    " permission_classes: Permisos requeridos para acceder a las vistas."
+    permission_classes = [IsAuthenticated, IsAdmin |IsEmployee ]  # Empleados o admins pueden manejar productos.
+    
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        producto = self.get_object()
+        pdf_file = build_producto_id_pdf(producto)
+        """
+         Genera un PDF para un producto específico.
+        Args:
+            request: Objeto de solicitud HTTP.
+            pk: Clave primaria del producto.
+            Returns:
+            HttpResponse: Respuesta HTTP con el PDF adjunto.
+        """
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="producto_{producto.nombre}.pdf"'
+        return response
+    
+    @action(detail=False, methods=['get'])
+    def all_pdf(self, request):
+        productos = self.get_queryset()
+        pdf_file = build_todos_productos_pdf(productos)
 
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('nombre', openapi.IN_QUERY, description="Filtra productos por nombre", type=openapi.TYPE_STRING),
-            openapi.Parameter('id_categoria', openapi.IN_QUERY, description="Filtra productos por categoría", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('id_proveedor', openapi.IN_QUERY, description="Filtra productos por proveedor", type=openapi.TYPE_INTEGER),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        nombre = request.query_params.get('nombre')
-        id_categoria = request.query_params.get('id_categoria')
-        id_proveedor = request.query_params.get('id_proveedor')
-        if nombre:
-            queryset = queryset.filter(nombre__icontains=nombre)
-        if id_categoria:
-            queryset = queryset.filter(id_categoria=id_categoria)
-        if id_proveedor:
-            queryset = queryset.filter(id_proveedor=id_proveedor)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="todos_productos.pdf"'
+        return response
 
 
+    
 class ProveedorViewset(viewsets.ModelViewSet):
     queryset = Proveedor.objects.all()
     serializer_class = ProveedorSerializer
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('nombre', openapi.IN_QUERY, description="Filtra proveedores por nombre", type=openapi.TYPE_STRING),
-            openapi.Parameter('contacto', openapi.IN_QUERY, description="Filtra proveedores por contacto", type=openapi.TYPE_STRING),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        nombre = request.query_params.get('nombre')
-        contacto = request.query_params.get('contacto')
-        if nombre:
-            queryset = queryset.filter(nombre__icontains=nombre)
-        if contacto:
-            queryset = queryset.filter(contacto__icontains=contacto)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+    permission_classes = [IsAuthenticated, IsAdmin | IsProvider]  # Admins o proveedores (para sus propios datos, si se extiende).
 
 class ClienteViewset(viewsets.ModelViewSet):
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('nombre', openapi.IN_QUERY, description="Filtra clientes por nombre", type=openapi.TYPE_STRING),
-            openapi.Parameter('correo', openapi.IN_QUERY, description="Filtra clientes por correo", type=openapi.TYPE_STRING),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        nombre = request.query_params.get('nombre')
-        correo = request.query_params.get('correo')
-        if nombre:
-            queryset = queryset.filter(nombre__icontains=nombre)
-        if correo:
-            queryset = queryset.filter(correo__icontains=correo)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+    permission_classes = [IsAuthenticated, IsClient | IsEmployee | IsAdmin]  # Clientes ven sus datos, empleados/admins gestionan.
 
 class EmpleadoViewset(viewsets.ModelViewSet):
     queryset = Empleado.objects.all()
     serializer_class = EmpleadoSerializer
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('nombre', openapi.IN_QUERY, description="Filtra empleados por nombre", type=openapi.TYPE_STRING),
-            openapi.Parameter('cargo', openapi.IN_QUERY, description="Filtra empleados por cargo", type=openapi.TYPE_STRING),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        nombre = request.query_params.get('nombre')
-        cargo = request.query_params.get('cargo')
-        if nombre:
-            queryset = queryset.filter(nombre__icontains=nombre)
-        if cargo:
-            queryset = queryset.filter(cargo__icontains=cargo)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+    permission_classes = [IsAuthenticated, IsAdmin]  # Solo admins manejan empleados.
 
 class FacturaVentaViewset(viewsets.ModelViewSet):
     queryset = FacturaVenta.objects.all()
     serializer_class = FacturaVentaSerializer
-
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('id_cliente', openapi.IN_QUERY, description="Filtra facturas por cliente", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('id_empleado', openapi.IN_QUERY, description="Filtra facturas por empleado", type=openapi.TYPE_INTEGER),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        id_cliente = request.query_params.get('id_cliente')
-        id_empleado = request.query_params.get('id_empleado')
-        if id_cliente:
-            queryset = queryset.filter(id_cliente=id_cliente)
-        if id_empleado:
-            queryset = queryset.filter(id_empleado=id_empleado)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+    permission_classes = [IsAuthenticated, IsEmployee | IsAdmin]  # Empleados crean facturas.
 
 class DetalleVentaViewset(viewsets.ModelViewSet):
     queryset = DetalleVenta.objects.all()
     serializer_class = DetalleVentaSerializer
+    permission_classes = [IsAuthenticated,  IsAdmin |IsEmployee ]
+    
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        detalle_venta = self.get_object()
+        pdf_file = build_detalle_venta_id_pdf(detalle_venta)
+        
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="detalle_venta_{detalle_venta.id}.pdf"'
+        return response
+    
+    @action(detail=False, methods=['get'])
+    def all_pdf(self, request):
+        detalles_venta = self.get_queryset()
+        pdf_file = build_todos_detalles_venta_pdf(detalles_venta)
 
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('id_factura', openapi.IN_QUERY, description="Filtra detalles por factura", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('id_producto', openapi.IN_QUERY, description="Filtra detalles por producto", type=openapi.TYPE_INTEGER),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        id_factura = request.query_params.get('id_factura')
-        id_producto = request.query_params.get('id_producto')
-        if id_factura:
-            queryset = queryset.filter(id_factura=id_factura)
-        if id_producto:
-            queryset = queryset.filter(id_producto=id_producto)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="todos_detalles_venta.pdf"'
+        return response
 
 class MovimientoViewset(viewsets.ModelViewSet):
+
     queryset = Movimiento.objects.all()
     serializer_class = MovimientoSerializer
+    permission_classes = [IsAuthenticated,   IsAdmin |IsEmployee  ]
+    
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        movimiento = self.get_object()
+        pdf_file = build_movimiento_id_pdf(movimiento)
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="movimiento_{movimiento.id}.pdf"'
+        return response
+    
+       
+    @action(detail=False, methods=['get'])
+    def all_pdf(self, request):
+        movimientos = self.get_queryset()
+        pdf_file = build_todos_movimientos_pdf(movimientos)
 
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('tipo', openapi.IN_QUERY, description="Filtra movimientos por tipo", type=openapi.TYPE_STRING),
-            openapi.Parameter('id_producto', openapi.IN_QUERY, description="Filtra movimientos por producto", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('id_cliente', openapi.IN_QUERY, description="Filtra movimientos por cliente", type=openapi.TYPE_INTEGER),
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        queryset = self.queryset
-        tipo = request.query_params.get('tipo')
-        id_producto = request.query_params.get('id_producto')
-        id_cliente = request.query_params.get('id_cliente')
-        if tipo:
-            queryset = queryset.filter(tipo__icontains=tipo)
-        if id_producto:
-            queryset = queryset.filter(id_producto=id_producto)
-        if id_cliente:
-            queryset = queryset.filter(id_cliente=id_cliente)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="todos_movimientos.pdf"'
+        return response

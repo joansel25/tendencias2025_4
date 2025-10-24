@@ -4,7 +4,11 @@ import os
 import sys
 
 
+
+
 def main():
+    # Añadir el directorio raíz del proyecto a sys.path
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'farmacia.settings')
     try:

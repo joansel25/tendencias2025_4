@@ -15,29 +15,46 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include, re_path
+from django.urls import path, include
+
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
+
 from drf_yasg import openapi
 
-schema_view = get_schema_view(
-   openapi.Info(
-      title="DOCUMENTACION API TENDENCIAS",
-      default_version='v1',
-      description="Gestion de Inventario Django",
-      terms_of_service="https://gestorinventariodjango.com",
-      contact=openapi.Contact(email="gestorinv@tdea.co"),
-      license=openapi.License(name="BSD License"),
-   ),
-   public=True,
-   permission_classes=(permissions.AllowAny,),
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
 )
+
+schema_view  = get_schema_view(
+    openapi.Info(
+        title = "Farmacia API",
+        default_version  = 'v1',
+        description  = "Documentacion de la API de inventario de farmacia",
+        terms_of_service = "https://www.google.com/policies/terms/",
+        contact = openapi.Contact(email = "jcardenas63@gmail.com"),
+        license = openapi.License(name  = "BSD License"),
+    ),
+    public = True,# Permite acceso público
+    permission_classes =(permissions.AllowAny,),# Permisos para acceder a la documentación
+)
+
+
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-    path('api/', include('apps.task.urls')), 
-    path('api-auth/', include('rest_framework.urls')) 
+    path('farmacia/', include('apps.task.urls')),#agregar las rutas configuradas en la api para que el servidor las incluyas al inciar
+    path('api/auth/', include('apps.usuario.urls')),  # Autenticación
+    path('swagger/', schema_view.with_ui('swagger',cache_timeout =0), name = 'schema-swagger-ui'),# Ruta para Swagger UI
+    path('redoc/', schema_view.with_ui('redoc',cache_timeout=0), name = 'schema-redoc'), # Ruta para ReDoc
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),# obtener los tokens
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),#obtener codigo de refrescar el token
+    
+    #schema: schema: se refiere a que la API permite manipular datos de E/S en formato (JSON o YAML)
+    #swagger:es una interfaz gráfica interactiva que permite explorar y probar los endpoints de la API (se basa en schema)
+    #_________________________________________________________________________________
+    
+    #redoc :es otra interfaz grafica para leer y enteder mas a detalle los endpoints de la API.(se basa en schema) 
 ]

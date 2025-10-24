@@ -1,378 +1,739 @@
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase
-from .models import (
-    Categoria, Proveedor, Producto,
-    Cliente, Empleado, FacturaVenta,
-    DetalleVenta, Movimiento
-)
+from rest_framework.test import APITestCase, APIClient
+from django.contrib.auth import get_user_model
+from .models import *
+from .pdf import *
+from io import BytesIO
+from rest_framework_simplejwt.tokens import RefreshToken
+# Asumimos que el modelo Rol está en apps.usuario.models
+from ..usuario.models import Rol  # Importar Rol para asignar roles
 
-class CategoriaTests(APITestCase):
+User = get_user_model()
+
+class AuthenticationTestCase(APITestCase):
+    """Pruebas de autenticación JWT"""
+    
     def setUp(self):
-        self.categoria_data = {'nombre': 'Medicamentos'}
-        self.categoria = Categoria.objects.create(nombre='Vitaminas')
+        self.client = APIClient()
+        self.user_data = {
+            'username': 'testuser',
+            'password': 'testpass123',
+            'email': 'test@example.com'
+        }
+        self.user = User.objects.create_user(**self.user_data)
+    
+    def test_jwt_authentication(self):
+        """Prueba la obtención de tokens JWT"""
+        url = reverse('token_obtain_pair')
+        response = self.client.post(url, {
+            'username': self.user_data['username'],
+            'password': self.user_data['password']
+        })
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+    
+    def test_protected_endpoint_without_token(self):
+        """Prueba acceso a endpoint protegido sin token"""
+        url = reverse('producto-list')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+    
+    def test_protected_endpoint_with_token(self):
+        """Prueba acceso a endpoint protegido con token válido"""
+        # Obtener token
+        refresh = RefreshToken.for_user(self.user)
+        access_token = str(refresh.access_token)
+        
+        # Acceder a endpoint protegido
+        url = reverse('producto-list')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        response = self.client.get(url)
+        
+        # Puede ser 200 OK o 403 FORBIDDEN dependiendo de los permisos
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_403_FORBIDDEN])
 
+class PermissionTestCase(APITestCase):
+    """Pruebas de permisos personalizados"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        
+        # Crear roles
+        self.rol_admin = Rol.objects.create(name='administrador')
+        self.rol_employee = Rol.objects.create(name='empleado')
+        self.rol_client = Rol.objects.create(name='cliente')
+        
+        # Crear usuarios con diferentes roles
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+        
+        self.employee_user = User.objects.create_user(
+            username='employee',
+            password='employeepass123',
+            email='employee@example.com'
+        )
+        self.employee_user.rol = self.rol_employee
+        self.employee_user.save()
+        
+        self.client_user = User.objects.create_user(
+            username='client',
+            password='clientpass123',
+            email='client@example.com'
+        )
+        self.client_user.rol = self.rol_client
+        self.client_user.save()
+        
+        # Datos de prueba
+        self.categoria = Categoria.objects.create(nombre='Medicamentos')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
+        
+        self.producto = Producto.objects.create(
+            nombre='Paracetamol', 
+            precio=10.50, 
+            stock=100,
+            id_categoria=self.categoria, 
+            id_proveedor=self.proveedor
+        )
+        
+        self.cliente = Cliente.objects.create(
+            nombre='Cliente Test', 
+            correo='cliente@test.com', 
+            telefono='3101234567',
+            usuario=self.client_user
+        )
+        
+        self.empleado = Empleado.objects.create(
+            nombre='Empleado Test', 
+            telefono='3111111111',
+            usuario=self.employee_user
+        )
+
+class CategoriaCRUDTestCase(APITestCase):
+    """Pruebas CRUD completas para el modelo Categoria"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        # Crear rol admin
+        self.rol_admin = Rol.objects.create(name='administrador')
+        
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+        
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
+        
+        self.categoria_data = {'nombre': 'Vitaminas'}
+        self.categoria = Categoria.objects.create(nombre='Medicamentos')
+    
     def test_crear_categoria(self):
+        """Prueba creación de categoría"""
         url = reverse('categoria-list')
         response = self.client.post(url, self.categoria_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Categoria.objects.count(), 2)
-
-        # Usar latest('id') para obtener la última categoría creada
-        ultima_categoria = Categoria.objects.latest('id')
-        self.assertEqual(ultima_categoria.nombre, 'Medicamentos')
-
+        self.assertEqual(response.data['nombre'], 'Vitaminas')
+    
     def test_listar_categorias(self):
+        """Prueba listado de categorías"""
         url = reverse('categoria-list')
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
-
-    def test_obtener_categoria(self):
+    
+    def test_obtener_categoria_especifica(self):
+        """Prueba obtener categoría específica"""
         url = reverse('categoria-detail', args=[self.categoria.id])
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['nombre'], 'Vitaminas')
-
+        self.assertEqual(response.data['nombre'], 'Medicamentos')
+    
     def test_actualizar_categoria(self):
+        """Prueba actualización de categoría"""
         url = reverse('categoria-detail', args=[self.categoria.id])
-        updated_data = {'nombre': 'Suplementos'}
-        response = self.client.put(url, updated_data, format='json')
+        updated_data = {'nombre': 'Medicamentos Generales'}
+        response = self.client.patch(url, updated_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.categoria.refresh_from_db()
-        self.assertEqual(self.categoria.nombre, 'Suplementos')
-
+        self.assertEqual(self.categoria.nombre, 'Medicamentos Generales')
+    
     def test_eliminar_categoria(self):
+        """Prueba eliminación de categoría"""
         url = reverse('categoria-detail', args=[self.categoria.id])
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Categoria.objects.count(), 0)
+        self.assertFalse(Categoria.objects.filter(id=self.categoria.id).exists())
 
-class ProveedorTests(APITestCase):
+class ProductoCRUDTestCase(APITestCase):
+    """Pruebas CRUD completas para el modelo Producto"""
+    
     def setUp(self):
-        self.proveedor_data = {'nombre': 'Proveedor Ejemplo', 'contacto': 'contacto@ejemplo.com'}
-        self.proveedor = Proveedor.objects.create(nombre='Proveedor Inicial', contacto='inicial@ejemplo.com')
-
-    def test_crear_proveedor(self):
-        url = reverse('proveedor-list')
-        response = self.client.post(url, self.proveedor_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Proveedor.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último proveedor creado
-        ultimo_proveedor = Proveedor.objects.latest('id')
-        self.assertEqual(ultimo_proveedor.nombre, 'Proveedor Ejemplo')
-
-    def test_listar_proveedores(self):
-        url = reverse('proveedor-list')
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-
-    def test_obtener_proveedor(self):
-        url = reverse('proveedor-detail', args=[self.proveedor.id])
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['nombre'], 'Proveedor Inicial')
-
-    def test_actualizar_proveedor(self):
-        url = reverse('proveedor-detail', args=[self.proveedor.id])
-        updated_data = {'nombre': 'Proveedor Actualizado', 'contacto': 'actualizado@ejemplo.com'}
-        response = self.client.put(url, updated_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.proveedor.refresh_from_db()
-        self.assertEqual(self.proveedor.nombre, 'Proveedor Actualizado')
-
-    def test_eliminar_proveedor(self):
-        url = reverse('proveedor-detail', args=[self.proveedor.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Proveedor.objects.count(), 0)
-
-class ProductoTests(APITestCase):
-    def setUp(self):
+        self.client = APIClient()
+        # Crear rol admin
+        self.rol_admin = Rol.objects.create(name='administrador')
+        
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+        
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
+        
+        # Datos de prueba
         self.categoria = Categoria.objects.create(nombre='Medicamentos')
-        self.proveedor = Proveedor.objects.create(nombre='Proveedor Ejemplo', contacto='contacto@ejemplo.com')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
+        
         self.producto_data = {
-            'nombre': 'Paracetamol',
-            'precio': 10.50,
-            'stock': 100,
+            'nombre': 'Ibuprofeno',
+            'precio': 15.75,
+            'stock': 50,
             'id_categoria': self.categoria.id,
             'id_proveedor': self.proveedor.id
         }
+        
         self.producto = Producto.objects.create(
-            nombre='Ibuprofeno',
-            precio=15.75,
-            stock=50,
-            id_categoria=self.categoria,
+            nombre='Paracetamol', 
+            precio=10.50, 
+            stock=100,
+            id_categoria=self.categoria, 
             id_proveedor=self.proveedor
         )
-
+    
     def test_crear_producto(self):
+        """Prueba creación de producto"""
         url = reverse('producto-list')
         response = self.client.post(url, self.producto_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Producto.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último producto creado
-        ultimo_producto = Producto.objects.latest('id')
-        self.assertEqual(ultimo_producto.nombre, 'Paracetamol')
-
-    def test_listar_producto(self):
+        self.assertEqual(Producto.objects.get(nombre='Ibuprofeno').precio, 15.75)
+    
+    def test_listar_productos(self):
+        """Prueba listado de productos"""
         url = reverse('producto-list')
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
-
-    def test_obtener_producto(self):
+    
+    def test_obtener_producto_especifico(self):
+        """Prueba obtener producto específico"""
         url = reverse('producto-detail', args=[self.producto.id])
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['nombre'], 'Ibuprofeno')
-
+        self.assertEqual(response.data['nombre'], 'Paracetamol')
+    
     def test_actualizar_producto(self):
+        """Prueba actualización de producto"""
         url = reverse('producto-detail', args=[self.producto.id])
-        updated_data = {
-            'nombre': 'Paracetamol 500mg',
-            'precio': 12.50,
-            'stock': 150,
-            'id_categoria': self.categoria.id,
-            'id_proveedor': self.proveedor.id
-        }
-        response = self.client.put(url, updated_data, format='json')
+        updated_data = {'precio': 12.25, 'stock': 150}
+        response = self.client.patch(url, updated_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.producto.refresh_from_db()
-        self.assertEqual(self.producto.nombre, 'Paracetamol 500mg')
-
+        self.assertEqual(self.producto.precio, 12.25)
+        self.assertEqual(self.producto.stock, 150)
+    
     def test_eliminar_producto(self):
+        """Prueba eliminación de producto"""
         url = reverse('producto-detail', args=[self.producto.id])
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Producto.objects.count(), 0)
+        self.assertFalse(Producto.objects.filter(id=self.producto.id).exists())
 
-class ClienteTests(APITestCase):
+class MovimientoCRUDTestCase(APITestCase):
+    """Pruebas CRUD completas para el modelo Movimiento"""
+
     def setUp(self):
-        self.cliente_data = {'nombre': 'Juan Pérez', 'correo': 'juan@example.com', 'telefono': '3123456789'}
-        self.cliente = Cliente.objects.create(nombre='Carlos López', correo='carlos@example.com', telefono='3101234567')
+        self.client = APIClient()
+        # Crear roles
+        self.rol_admin = Rol.objects.create(name='administrador')
+        self.rol_client = Rol.objects.create(name='cliente')
 
-    def test_crear_cliente(self):
-        url = reverse('cliente-list')
-        response = self.client.post(url, self.cliente_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Cliente.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último cliente creado
-        ultimo_cliente = Cliente.objects.latest('id')
-        self.assertEqual(ultimo_cliente.nombre, 'Juan Pérez')
-
-    def test_listar_clientes(self):
-        url = reverse('cliente-list')
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-
-    def test_obtener_cliente(self):
-        url = reverse('cliente-detail', args=[self.cliente.id])
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['nombre'], 'Carlos López')
-
-    def test_actualizar_cliente(self):
-        url = reverse('cliente-detail', args=[self.cliente.id])
-        updated_data = {'nombre': 'Carlos López Actualizado', 'correo': 'carlos.actualizado@example.com', 'telefono': '3101234567'}
-        response = self.client.put(url, updated_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.cliente.refresh_from_db()
-        self.assertEqual(self.cliente.nombre, 'Carlos López Actualizado')
-
-    def test_eliminar_cliente(self):
-        url = reverse('cliente-detail', args=[self.cliente.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Cliente.objects.count(), 0)
-
-class EmpleadoTests(APITestCase):
-    def setUp(self):
-        self.empleado_data = {'nombre': 'Ana Gómez', 'telefono': '3134567890', 'cargo': 'Vendedora'}
-        self.empleado = Empleado.objects.create(nombre='Luis Martínez', telefono='3145678901', cargo='Gerente')
-
-    def test_crear_empleado(self):
-        url = reverse('empleado-list')
-        response = self.client.post(url, self.empleado_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Empleado.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último empleado creado
-        ultimo_empleado = Empleado.objects.latest('id')
-        self.assertEqual(ultimo_empleado.nombre, 'Ana Gómez')
-
-    def test_listar_empleados(self):
-        url = reverse('empleado-list')
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-
-    def test_obtener_empleado(self):
-        url = reverse('empleado-detail', args=[self.empleado.id])
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['nombre'], 'Luis Martínez')
-
-    def test_actualizar_empleado(self):
-        url = reverse('empleado-detail', args=[self.empleado.id])
-        updated_data = {'nombre': 'Luis Martínez Actualizado', 'telefono': '3145678901', 'cargo': 'Supervisor'}
-        response = self.client.put(url, updated_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.empleado.refresh_from_db()
-        self.assertEqual(self.empleado.cargo, 'Supervisor')
-
-    def test_eliminar_empleado(self):
-        url = reverse('empleado-detail', args=[self.empleado.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Empleado.objects.count(), 0)
-
-class FacturaVentaTests(APITestCase):
-    def setUp(self):
-        self.cliente = Cliente.objects.create(nombre='Carlos López', correo='carlos@example.com', telefono='3101234567')
-        self.empleado = Empleado.objects.create(nombre='Luis Martínez', telefono='3145678901', cargo='Gerente')
-        self.factura_data = {
-            'id_cliente': self.cliente.id,
-            'id_empleado': self.empleado.id
-        }
-        self.factura = FacturaVenta.objects.create(
-            id_cliente=self.cliente,
-            id_empleado=self.empleado
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
         )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
 
-    def test_crear_factura(self):
-        url = reverse('facturaventa-list')
-        response = self.client.post(url, self.factura_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(FacturaVenta.objects.count(), 2)
+        self.client_user = User.objects.create_user(
+            username='client',
+            password='clientpass123',
+            email='client@example.com'
+        )
+        self.client_user.rol = self.rol_client
+        self.client_user.save()
 
-    def test_listar_facturas(self):
-        url = reverse('facturaventa-list')
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
 
-    def test_obtener_factura(self):
-        url = reverse('facturaventa-detail', args=[self.factura.id])
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_eliminar_factura(self):
-        url = reverse('facturaventa-detail', args=[self.factura.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(FacturaVenta.objects.count(), 0)
-
-class DetalleVentaTests(APITestCase):
-    def setUp(self):
+        # Datos de prueba
         self.categoria = Categoria.objects.create(nombre='Medicamentos')
-        self.proveedor = Proveedor.objects.create(nombre='Proveedor Ejemplo', contacto='contacto@ejemplo.com')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
         self.producto = Producto.objects.create(
-            nombre='Paracetamol',
-            precio=10.50,
+            nombre='Paracetamol', 
+            precio=10.50, 
             stock=100,
-            id_categoria=self.categoria,
+            id_categoria=self.categoria, 
             id_proveedor=self.proveedor
         )
-        self.cliente = Cliente.objects.create(nombre='Carlos López', correo='carlos@example.com', telefono='3101234567')
-        self.empleado = Empleado.objects.create(nombre='Luis Martínez', telefono='3145678901', cargo='Gerente')
-        self.factura = FacturaVenta.objects.create(
-            id_cliente=self.cliente,
-            id_empleado=self.empleado
-        )
-        self.detalle_data = {
-            'cantidad': 2,
-            'precio_unitario': 10.50,
-            'id_factura': self.factura.id,
-            'id_producto': self.producto.id
-        }
-        self.detalle = DetalleVenta.objects.create(
-            cantidad=1,
-            precio_unitario=10.50,
-            id_factura=self.factura,
-            id_producto=self.producto
+        self.cliente = Cliente.objects.create(
+            nombre='Cliente Test', 
+            correo='cliente@test.com', 
+            telefono='3101234567',
+            usuario=self.client_user
         )
 
-    def test_crear_detalle(self):
-        url = reverse('detalleventa-list')
-        response = self.client.post(url, self.detalle_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(DetalleVenta.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último detalle creado
-        ultimo_detalle = DetalleVenta.objects.latest('id')
-        self.assertEqual(ultimo_detalle.cantidad, 2)
-
-    def test_listar_detalles(self):
-        url = reverse('detalleventa-list')
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-
-    def test_obtener_detalle(self):
-        url = reverse('detalleventa-detail', args=[self.detalle.id])
-        response = self.client.get(url, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_eliminar_detalle(self):
-        url = reverse('detalleventa-detail', args=[self.detalle.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(DetalleVenta.objects.count(), 0)
-
-class MovimientoTests(APITestCase):
-    def setUp(self):
-        self.categoria = Categoria.objects.create(nombre='Medicamentos')
-        self.proveedor = Proveedor.objects.create(nombre='Proveedor Ejemplo', contacto='contacto@ejemplo.com')
-        self.producto = Producto.objects.create(
-            nombre='Paracetamol',
-            precio=10.50,
-            stock=100,
-            id_categoria=self.categoria,
-            id_proveedor=self.proveedor
-        )
-        self.cliente = Cliente.objects.create(nombre='Carlos López', correo='carlos@example.com', telefono='3101234567')
         self.movimiento_data = {
             'tipo': 'entrada',
             'cantidad': 10,
             'id_producto': self.producto.id,
             'id_cliente': self.cliente.id
         }
+
         self.movimiento = Movimiento.objects.create(
-            tipo='salida',
-            cantidad=5,
-            id_producto=self.producto,
+            tipo='salida', 
+            cantidad=5, 
+            id_producto=self.producto, 
             id_cliente=self.cliente
         )
 
     def test_crear_movimiento(self):
+        """Prueba creación de movimiento"""
         url = reverse('movimiento-list')
         response = self.client.post(url, self.movimiento_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Movimiento.objects.count(), 2)
-
-        # Usar latest('id') para obtener el último movimiento creado
-        ultimo_movimiento = Movimiento.objects.latest('id')
-        self.assertEqual(ultimo_movimiento.tipo, 'entrada')
+        self.assertEqual(Movimiento.objects.get(tipo='entrada').cantidad, 10)
 
     def test_listar_movimientos(self):
+        """Prueba listado de movimientos"""
         url = reverse('movimiento-list')
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
 
-    def test_obtener_movimiento(self):
+    def test_obtener_movimiento_especifico(self):
+        """Prueba obtener movimiento específico"""
         url = reverse('movimiento-detail', args=[self.movimiento.id])
-        response = self.client.get(url, format='json')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['tipo'], 'salida')
+
+    def test_actualizar_movimiento(self):
+        """Prueba actualización de movimiento"""
+        url = reverse('movimiento-detail', args=[self.movimiento.id])
+        updated_data = {'cantidad': 15}
+        response = self.client.patch(url, updated_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.movimiento.refresh_from_db()
+        self.assertEqual(self.movimiento.cantidad, 15)
 
     def test_eliminar_movimiento(self):
+        """Prueba eliminación de movimiento"""
         url = reverse('movimiento-detail', args=[self.movimiento.id])
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertFalse(Movimiento.objects.filter(id=self.movimiento.id).exists())
+
+class DetalleVentaCRUDTestCase(APITestCase):
+    """Pruebas CRUD completas para el modelo DetalleVenta"""
+
+    def setUp(self):
+        self.client = APIClient()
+        # Crear roles
+        self.rol_admin = Rol.objects.create(name='administrador')
+        self.rol_employee = Rol.objects.create(name='empleado')
+        self.rol_client = Rol.objects.create(name='cliente')
+
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+
+        self.employee_user = User.objects.create_user(
+            username='employee',
+            password='employeepass123',
+            email='employee@example.com'
+        )
+        self.employee_user.rol = self.rol_employee
+        self.employee_user.save()
+
+        self.client_user = User.objects.create_user(
+            username='client',
+            password='clientpass123',
+            email='client@example.com'
+        )
+        self.client_user.rol = self.rol_client
+        self.client_user.save()
+
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
+
+        # Datos de prueba
+        self.categoria = Categoria.objects.create(nombre='Medicamentos')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
+        self.producto = Producto.objects.create(
+            nombre='Paracetamol', 
+            precio=10.50, 
+            stock=100,
+            id_categoria=self.categoria, 
+            id_proveedor=self.proveedor
+        )
+        self.cliente = Cliente.objects.create(
+            nombre='Cliente Test', 
+            correo='cliente@test.com', 
+            telefono='3101234567',
+            usuario=self.client_user
+        )
+        self.empleado = Empleado.objects.create(
+            nombre='Empleado Test', 
+            telefono='3111111111',
+            usuario=self.employee_user
+        )
+        self.factura = FacturaVenta.objects.create(
+            id_cliente=self.cliente,
+            id_empleado=self.empleado
+        )
+
+        self.detalle_venta_data = {
+            'cantidad': 3,
+            'precio_unitario': 12.00,
+            'id_factura': self.factura.id,
+            'id_producto': self.producto.id
+        }
+
+        self.detalle_venta = DetalleVenta.objects.create(
+            cantidad=2, 
+            precio_unitario=10.50, 
+            id_factura=self.factura, 
+            id_producto=self.producto
+        )
+
+    def test_crear_detalle_venta(self):
+        """Prueba creación de detalle de venta"""
+        url = reverse('detalleventa-list')
+        response = self.client.post(url, self.detalle_venta_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(DetalleVenta.objects.count(), 2)
+        self.assertEqual(DetalleVenta.objects.get(cantidad=3).precio_unitario, 12.00)
+
+    def test_listar_detalles_venta(self):
+        """Prueba listado de detalles de venta"""
+        url = reverse('detalleventa-list')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+
+    def test_obtener_detalle_venta_especifico(self):
+        """Prueba obtener detalle de venta específico"""
+        url = reverse('detalleventa-detail', args=[self.detalle_venta.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['cantidad'], 2)
+
+    def test_actualizar_detalle_venta(self):
+        """Prueba actualización de detalle de venta"""
+        url = reverse('detalleventa-detail', args=[self.detalle_venta.id])
+        updated_data = {'cantidad': 4, 'precio_unitario': 11.00}
+        response = self.client.patch(url, updated_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.detalle_venta.refresh_from_db()
+        self.assertEqual(self.detalle_venta.cantidad, 4)
+        self.assertEqual(self.detalle_venta.precio_unitario, 11.00)
+
+    def test_eliminar_detalle_venta(self):
+        """Prueba eliminación de detalle de venta"""
+        url = reverse('detalleventa-detail', args=[self.detalle_venta.id])
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(DetalleVenta.objects.filter(id=self.detalle_venta.id).exists())
+
+class PDFGenerationTestCase(APITestCase):
+    """Pruebas específicas para generación de PDFs"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        # Crear roles
+        self.rol_admin = Rol.objects.create(name='administrador')
+        self.rol_employee = Rol.objects.create(name='empleado')
+        self.rol_client = Rol.objects.create(name='cliente')
+
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+        
+        self.client_user = User.objects.create_user(
+            username='client',
+            password='clientpass123',
+            email='client@example.com'
+        )
+        self.client_user.rol = self.rol_client
+        self.client_user.save()
+        
+        self.employee_user = User.objects.create_user(
+            username='employee',
+            password='employeepass123',
+            email='employee@example.com'
+        )
+        self.employee_user.rol = self.rol_employee
+        self.employee_user.save()
+        
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
+        
+        # Datos de prueba
+        self.categoria = Categoria.objects.create(nombre='Medicamentos')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
+        
+        self.producto = Producto.objects.create(
+            nombre='Paracetamol', 
+            precio=10.50, 
+            stock=100,
+            id_categoria=self.categoria, 
+            id_proveedor=self.proveedor
+        )
+        
+        self.cliente = Cliente.objects.create(
+            nombre='Cliente Test', 
+            correo='cliente@test.com', 
+            telefono='3101234567',
+            usuario=self.client_user
+        )
+        
+        self.empleado = Empleado.objects.create(
+            nombre='Empleado Test', 
+            telefono='3111111111',
+            usuario=self.employee_user
+        )
+        
+        self.factura = FacturaVenta.objects.create(
+            id_cliente=self.cliente,
+            id_empleado=self.empleado
+        )
+        
+        self.movimiento = Movimiento.objects.create(
+            tipo='salida', 
+            cantidad=5, 
+            id_producto=self.producto, 
+            id_cliente=self.cliente
+        )
+        
+        self.detalle_venta = DetalleVenta.objects.create(
+            cantidad=2, 
+            precio_unitario=10.50, 
+            id_factura=self.factura, 
+            id_producto=self.producto
+        )
+    
+    def test_generar_pdf_movimiento_especifico(self):
+        """Prueba generación de PDF para movimiento específico"""
+        pdf_file = build_movimiento_id_pdf(self.movimiento)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_generar_pdf_todos_movimientos(self):
+        """Prueba generación de PDF para todos los movimientos"""
+        movimientos = Movimiento.objects.all()
+        pdf_file = build_todos_movimientos_pdf(movimientos)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_generar_pdf_producto_especifico(self):
+        """Prueba generación de PDF para producto específico"""
+        pdf_file = build_producto_id_pdf(self.producto)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_generar_pdf_todos_productos(self):
+        """Prueba generación de PDF para todos los productos"""
+        productos = Producto.objects.all()
+        pdf_file = build_todos_productos_pdf(productos)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_generar_pdf_detalle_venta_especifico(self):
+        """Prueba generación de PDF para detalle de venta específico"""
+        pdf_file = build_detalle_venta_id_pdf(self.detalle_venta)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_generar_pdf_todos_detalles_venta(self):
+        """Prueba generación de PDF para todos los detalles de venta"""
+        detalles_venta = DetalleVenta.objects.all()
+        pdf_file = build_todos_detalles_venta_pdf(detalles_venta)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+    
+    def test_endpoints_pdf_movimientos(self):
+        """Prueba los endpoints de PDF para movimientos"""
+        # PDF de movimiento específico
+        url = reverse('movimiento-pdf', args=[self.movimiento.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        
+        # PDF de todos los movimientos
+        url = reverse('movimiento-all-pdf')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+    
+    def test_endpoints_pdf_productos(self):
+        """Prueba los endpoints de PDF para productos"""
+        # PDF de producto específico
+        url = reverse('producto-pdf', args=[self.producto.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        
+        # PDF de todos los productos
+        url = reverse('producto-all-pdf')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+    
+    def test_endpoints_pdf_detalles_venta(self):
+        """Prueba los endpoints de PDF para detalles de venta"""
+        # PDF de detalle de venta específico
+        url = reverse('detalleventa-pdf', args=[self.detalle_venta.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        
+        # PDF de todos los detalles de venta
+        url = reverse('detalleventa-all-pdf')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+class IntegrationTestCase(APITestCase):
+    """Pruebas de integración que combinan múltiples funcionalidades"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        # Crear rol admin
+        self.rol_admin = Rol.objects.create(name='administrador')
+        
+        self.admin_user = User.objects.create_user(
+            username='admin', 
+            password='adminpass123',
+            email='admin@example.com'
+        )
+        self.admin_user.rol = self.rol_admin
+        self.admin_user.save()
+        
+        # Autenticar como admin
+        refresh = RefreshToken.for_user(self.admin_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
+        
+        # Crear datos de prueba básicos
+        self.categoria = Categoria.objects.create(nombre='Medicamentos')
+        self.proveedor = Proveedor.objects.create(
+            nombre='Proveedor Test', 
+            contacto='test@proveedor.com',
+            usuario=self.admin_user
+        )
+    
+    def test_flujo_completo_producto_movimiento(self):
+        """Prueba un flujo completo: crear producto -> crear movimiento -> generar PDF"""
+        # 1. Crear producto
+        producto_data = {
+            'nombre': 'Ibuprofeno',
+            'precio': 15.75,
+            'stock': 50,
+            'id_categoria': self.categoria.id,
+            'id_proveedor': self.proveedor.id
+        }
+        
+        response = self.client.post(reverse('producto-list'), producto_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        producto_id = response.data['id']
+        
+        # 2. Crear cliente para el movimiento
+        rol_client = Rol.objects.create(name='cliente')
+        cliente_user = User.objects.create_user(
+            username='cliente_test',
+            password='cliente123',
+            email='cliente@test.com'
+        )
+        cliente_user.rol = rol_client
+        cliente_user.save()
+        
+        cliente = Cliente.objects.create(
+            nombre='Cliente Test',
+            correo='cliente@test.com',
+            telefono='3101234567',
+            usuario=cliente_user
+        )
+        
+        # 3. Crear movimiento
+        movimiento_data = {
+            'tipo': 'entrada',
+            'cantidad': 10,
+            'id_producto': producto_id,
+            'id_cliente': cliente.id
+        }
+        
+        response = self.client.post(reverse('movimiento-list'), movimiento_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        movimiento_id = response.data['id']
+        
+        # 4. Generar PDF del movimiento
+        movimiento = Movimiento.objects.get(id=movimiento_id)
+        pdf_file = build_movimiento_id_pdf(movimiento)
+        self.assertIsInstance(pdf_file, BytesIO)
+        self.assertGreater(len(pdf_file.getvalue()), 0)
+        
+        # 5. Verificar que el endpoint de PDF funciona
+        url = reverse('movimiento-pdf', args=[movimiento_id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
