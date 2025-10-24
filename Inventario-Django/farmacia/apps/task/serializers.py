@@ -1,14 +1,12 @@
 from rest_framework import serializers
-from .models import (
-    Categoria,Producto,Proveedor,
+from .models import (Categoria,Producto,Proveedor,
     Cliente,Empleado,FacturaVenta,
     DetalleVenta,Movimiento
 )
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
-# ModelSerializer: es una clase de DRF que automatiza la creación de serializadores basados en modelos de Django.
-# Meta es una subclase que centralizar la configuración y metadatos del serializador
-# fields: define qué campos del modelo se incluyen en la serialización 
-
+        
 class CategoriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Categoria

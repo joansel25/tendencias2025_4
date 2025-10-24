@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,11 +38,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'drf_yasg',
-
     'apps.task',
+    'apps.usuario', 
     'rest_framework',
-    
+    'drf_yasg',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
@@ -56,6 +57,14 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'farmacia.urls'
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+    # 'DEFAULT_PERMISSION_CLASSES': [
+    #     'rest_framework.permissions.IsAuthenticated',  # ✅ Todas las vistas requieren autenticación por defecto
+    
+}
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -72,19 +81,38 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'farmacia.wsgi.application'
+AUTH_USER_MODEL = 'usuario.Usuario'
 
 
-# Database
+# # Database
+# DATABASES = {
+#      "default": {
+#          "ENGINE": "django.db.backends.mysql",
+#          "NAME": "farmacia",  # Asegúrate de que este nombre de base de datos exista en MySQL
+#          "USER": "root",
+#          "PASSWORD": "",  # Si no tienes contraseña para root, déjala vacía. Si sí, ponla aquí.
+#          "HOST": "localhost", # O "127.0.0.1"
+#          "PORT": "3306",  # Asegúrate de que este sea el puerto correcto donde MySQL está escuchando
+#  }
+# }
+
+
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "farmacia",  # Asegúrate de que este nombre de base de datos exista en MySQL
-        "USER": "root",
-        "PASSWORD": "",  # Si no tienes contraseña para root, déjala vacía. Si sí, ponla aquí.
-        "HOST": "localhost", # O "127.0.0.1"
-        "PORT": "3306",  # Asegúrate de que este sea el puerto correcto donde MySQL está escuchando
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+
+        'NAME': 'farmacia',       # Replace with your PostgreSQL database name,
+
+        'USER': 'postgres',     # Replace with your PostgreSQL username,
+
+        'PASSWORD': 'postgres',  # Replace with your PostgreSQL password,
+
+        'HOST': 'localhost',  # Or the IP address/hostname of your PostgreSQL server,
+	
+        'PORT': '5432',  # Default PostgreSQL port, or specify if different,
     }
 }
+
 
 
 # Password validation
@@ -105,13 +133,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-REST_FRAMEWORK = {
-    # Use Django's standard `django.contrib.auth` permissions,
-    # or allow read-only access for unauthenticated users.
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
-    ]
-}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
@@ -134,3 +155,12 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), #token de acceso valido 60 min
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=3), #refresh en 1 dia
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,# por defecto usa SECRET_KEY
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
