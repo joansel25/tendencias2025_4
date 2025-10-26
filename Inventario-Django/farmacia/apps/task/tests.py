@@ -6,8 +6,7 @@ from .models import *
 from .pdf import *
 from io import BytesIO
 from rest_framework_simplejwt.tokens import RefreshToken
-# Asumimos que el modelo Rol está en apps.usuario.models
-from ..usuario.models import Rol  # Importar Rol para asignar roles
+from ..usuario.models import Rol  
 
 User = get_user_model()
 
@@ -43,11 +42,9 @@ class AuthenticationTestCase(APITestCase):
     
     def test_protected_endpoint_with_token(self):
         """Prueba acceso a endpoint protegido con token válido"""
-        # Obtener token
         refresh = RefreshToken.for_user(self.user)
         access_token = str(refresh.access_token)
         
-        # Acceder a endpoint protegido
         url = reverse('producto-list')
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
         response = self.client.get(url)
@@ -61,12 +58,12 @@ class PermissionTestCase(APITestCase):
     def setUp(self):
         self.client = APIClient()
         
-        # Crear roles
+        
         self.rol_admin = Rol.objects.create(name='administrador')
         self.rol_employee = Rol.objects.create(name='empleado')
         self.rol_client = Rol.objects.create(name='cliente')
         
-        # Crear usuarios con diferentes roles
+    
         self.admin_user = User.objects.create_user(
             username='admin', 
             password='adminpass123',
@@ -91,7 +88,7 @@ class PermissionTestCase(APITestCase):
         self.client_user.rol = self.rol_client
         self.client_user.save()
         
-        # Datos de prueba
+     
         self.categoria = Categoria.objects.create(nombre='Medicamentos')
         self.proveedor = Proveedor.objects.create(
             nombre='Proveedor Test', 
@@ -125,7 +122,7 @@ class CategoriaCRUDTestCase(APITestCase):
     
     def setUp(self):
         self.client = APIClient()
-        # Crear rol admin
+      
         self.rol_admin = Rol.objects.create(name='administrador')
         
         self.admin_user = User.objects.create_user(
@@ -136,7 +133,7 @@ class CategoriaCRUDTestCase(APITestCase):
         self.admin_user.rol = self.rol_admin
         self.admin_user.save()
         
-        # Autenticar como admin
+       
         refresh = RefreshToken.for_user(self.admin_user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
         
@@ -614,13 +611,11 @@ class PDFGenerationTestCase(APITestCase):
     
     def test_endpoints_pdf_movimientos(self):
         """Prueba los endpoints de PDF para movimientos"""
-        # PDF de movimiento específico
         url = reverse('movimiento-pdf', args=[self.movimiento.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         
-        # PDF de todos los movimientos
         url = reverse('movimiento-all-pdf')
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -628,13 +623,11 @@ class PDFGenerationTestCase(APITestCase):
     
     def test_endpoints_pdf_productos(self):
         """Prueba los endpoints de PDF para productos"""
-        # PDF de producto específico
         url = reverse('producto-pdf', args=[self.producto.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         
-        # PDF de todos los productos
         url = reverse('producto-all-pdf')
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -642,13 +635,12 @@ class PDFGenerationTestCase(APITestCase):
     
     def test_endpoints_pdf_detalles_venta(self):
         """Prueba los endpoints de PDF para detalles de venta"""
-        # PDF de detalle de venta específico
         url = reverse('detalleventa-pdf', args=[self.detalle_venta.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         
-        # PDF de todos los detalles de venta
+      
         url = reverse('detalleventa-all-pdf')
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -659,7 +651,6 @@ class IntegrationTestCase(APITestCase):
     
     def setUp(self):
         self.client = APIClient()
-        # Crear rol admin
         self.rol_admin = Rol.objects.create(name='administrador')
         
         self.admin_user = User.objects.create_user(
@@ -670,11 +661,11 @@ class IntegrationTestCase(APITestCase):
         self.admin_user.rol = self.rol_admin
         self.admin_user.save()
         
-        # Autenticar como admin
+        
         refresh = RefreshToken.for_user(self.admin_user)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
         
-        # Crear datos de prueba básicos
+    
         self.categoria = Categoria.objects.create(nombre='Medicamentos')
         self.proveedor = Proveedor.objects.create(
             nombre='Proveedor Test', 
@@ -684,7 +675,7 @@ class IntegrationTestCase(APITestCase):
     
     def test_flujo_completo_producto_movimiento(self):
         """Prueba un flujo completo: crear producto -> crear movimiento -> generar PDF"""
-        # 1. Crear producto
+      
         producto_data = {
             'nombre': 'Ibuprofeno',
             'precio': 15.75,
@@ -697,7 +688,6 @@ class IntegrationTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         producto_id = response.data['id']
         
-        # 2. Crear cliente para el movimiento
         rol_client = Rol.objects.create(name='cliente')
         cliente_user = User.objects.create_user(
             username='cliente_test',
@@ -714,7 +704,7 @@ class IntegrationTestCase(APITestCase):
             usuario=cliente_user
         )
         
-        # 3. Crear movimiento
+       
         movimiento_data = {
             'tipo': 'entrada',
             'cantidad': 10,
@@ -726,13 +716,11 @@ class IntegrationTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         movimiento_id = response.data['id']
         
-        # 4. Generar PDF del movimiento
         movimiento = Movimiento.objects.get(id=movimiento_id)
         pdf_file = build_movimiento_id_pdf(movimiento)
         self.assertIsInstance(pdf_file, BytesIO)
         self.assertGreater(len(pdf_file.getvalue()), 0)
         
-        # 5. Verificar que el endpoint de PDF funciona
         url = reverse('movimiento-pdf', args=[movimiento_id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)

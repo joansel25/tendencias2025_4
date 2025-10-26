@@ -16,4 +16,3 @@ router.register(r'detallesventa', DetalleVentaViewset, basename='detalleventa')
 router.register(r'movimientos', MovimientoViewset, basename='movimiento')
 
 urlpatterns = router.urls
-#
