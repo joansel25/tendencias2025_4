@@ -9,7 +9,7 @@ from reportlab.platypus import Table, TableStyle
 
 
 def build_movimiento_id_pdf(movimiento):
-    """Genera PDF detallado para un movimiento de inventario específico, usando tabla para estructurar datos clave."""
+    """Genera un PDF con los datos detallados de un movimiento de inventario."""
     buf = BytesIO()
     page = canvas.Canvas(buf, pagesize=letter)
     width, height = letter
@@ -46,8 +46,7 @@ def build_movimiento_id_pdf(movimiento):
     return buf
 
 def build_todos_movimientos_pdf(movimientos):
-    """Genera un PDF con un listado tabular de todos los movimientos,
-   permitiendo presentar múltiples registros en una sola página."""
+    """Genera un PDF con todos los movimientos de inventario en formato tabular."""
     buf = BytesIO()
     page = canvas.Canvas(buf, pagesize=letter)
     width, height = letter

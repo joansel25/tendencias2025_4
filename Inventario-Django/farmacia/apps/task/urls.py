@@ -1,5 +1,4 @@
-#Aqui Definimos  las rutas relacionadas con los modelos y vistas de la aplicación task.
-#Mantenemos  el código limpio y modular, separando las URLs por aplicación.
+"""Definimos las rutas de la app Task, manteniendo el código modular y organizado."""
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter

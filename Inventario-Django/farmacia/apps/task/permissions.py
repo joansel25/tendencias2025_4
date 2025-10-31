@@ -3,9 +3,7 @@ from rest_framework.permissions import BasePermission
 """Permisos personalizados para restringir acceso basado en roles de usuario."""
 
 class IsAdmin(BasePermission):
-    
     """Permite acceso solo a usuarios con rol 'administrador'."""
-    
     message = 'Acceso denegado: Requiere rol de administrador.'
 
     def has_permission(self, request, view):

@@ -10,8 +10,7 @@ class Categoria(TimeStampedModel):  #models.Model
         return self.nombre
 
 class Proveedor(TimeStampedModel):
-    """Proveedor asociado a un usuario, con contacto único para facilitar el control y registro de acciones."""
-
+    """Asocia un proveedor a un usuario con contacto único para control y registro."""
     usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="proveedores")
     nombre = models.CharField(max_length=150)
     contacto = models.CharField(max_length=100,unique=True )
@@ -63,7 +62,6 @@ class FacturaVenta(TimeStampedModel):
     id_empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="facturas")
     
     def save(self, *args, **kwargs):
-        #guardar la instancia(iD) y calcular  la suma total de todos los subtotales ventas
         super().save(*args, **kwargs)
         self.total = sum(detalle.subtotal for detalle in self.detalles.all())
         super().save(update_fields=["total"])
@@ -93,7 +91,6 @@ class Movimiento(TimeStampedModel):
         ('entrada', 'Entrada'),
         ('salida', 'Salida'),
     ]
-
   
     tipo = models.CharField(max_length=10, choices=TIPOS_MOVIMIENTO)
     cantidad = models.IntegerField(default=1)

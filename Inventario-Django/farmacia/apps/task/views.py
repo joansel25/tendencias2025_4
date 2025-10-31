@@ -1,6 +1,6 @@
 
-"""Este archivo define ViewSets para manejar operaciones CRUD en modelos relacionados con una farmacia,
-integrando autenticación JWT, permisos personalizados y generación de PDFs"""
+"""ViewSets gestionamos operaciones CRUD con autenticación, 
+permisos y generación de PDFs."""
 
 from rest_framework import viewsets  
 from .models import*
@@ -13,7 +13,7 @@ from .pdf import *
 from rest_framework.decorators import action
 
 class CategoriaViewSet(viewsets.ModelViewSet):
-    """Gestiona categorías con permisos de admin y documentación Swagger para list/create."""
+    """Gestiona categorías con permisos especificos y documentación Swagger para list/create."""
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
@@ -34,7 +34,7 @@ class CategoriaViewSet(viewsets.ModelViewSet):
 
 
 class ProductoViewset(viewsets.ModelViewSet):
-    """Maneja productos con permisos combinados (admin/empleado) y acciones para PDFs individuales/todos."""
+    """Maneja productos con permisos combinados y acciones para PDFss."""
     queryset = Producto.objects.all()
     serializer_class = ProductoSerializer
     permission_classes = [IsAuthenticated, IsAdmin |IsEmployee ]  
@@ -66,7 +66,7 @@ class ProveedorViewset(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin | IsProvider]  
     
 class ClienteViewset(viewsets.ModelViewSet):
-    """Maneja clientes con permisos amplios (cliente/empleado/admin)."""
+    """Maneja clientes con permisos amplios."""
     queryset = Cliente.objects.all()
     serializer_class = ClienteSerializer
     permission_classes = [IsAuthenticated, IsClient | IsEmployee | IsAdmin]  
@@ -78,13 +78,13 @@ class EmpleadoViewset(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]  
 
 class FacturaVentaViewset(viewsets.ModelViewSet):
-    """Maneja facturas de venta con permisos para empleado/admin."""
+    """Maneja facturas de venta con permisos de usuarios especificos."""
     queryset = FacturaVenta.objects.all()
     serializer_class = FacturaVentaSerializer
     permission_classes = [IsAuthenticated, IsEmployee | IsAdmin] 
 
 class DetalleVentaViewset(viewsets.ModelViewSet):
-    """Gestiona detalles de venta con permisos admin/empleado y acciones para PDFs."""
+    """Gestiona detalles de venta con permisos  y acciones para PDFs."""
     queryset = DetalleVenta.objects.all()
     serializer_class = DetalleVentaSerializer
     permission_classes = [IsAuthenticated,  IsAdmin |IsEmployee ]
@@ -108,7 +108,7 @@ class DetalleVentaViewset(viewsets.ModelViewSet):
         return response
 
 class MovimientoViewset(viewsets.ModelViewSet):
-    """Maneja movimientos de inventario con permisos admin/empleado y acciones para PDFs."""
+    """Maneja movimientos de inventario con permisos y acciones para PDFs."""
     queryset = Movimiento.objects.all()
     serializer_class = MovimientoSerializer
     permission_classes = [IsAuthenticated,   IsAdmin |IsEmployee  ]
