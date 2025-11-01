@@ -91,7 +91,7 @@ class UsuarioAPITests(APITestCase):
 
     def test_listar_usuarios_sin_autenticacion(self):
         """Prueba listar usuarios SIN autenticación"""
-        self.client.force_authenticate(user=None)  # Remover autenticación
+        self.client.force_authenticate(user=None)
         url = reverse('usuario-list')
         response = self.client.get(url, format='json')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -140,11 +140,7 @@ class UsuarioAPITests(APITestCase):
         }
         
         response = self.client.patch(url, updated_data, format='json')
-        
-        # HTTP 200: OK - Con autenticación
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
-        # Verificar cambios en la base de datos
         self.user.refresh_from_db()
         self.assertEqual(self.user.username, 'user_updated')
         self.assertEqual(self.user.telefono, '9999999999')
@@ -178,7 +174,7 @@ class UsuarioAPITests(APITestCase):
             'username': 'invaliduser',
             'email': 'invalid@example.com',
             'password': 'invalidpass123',
-            'rol': 9999,  # ID de rol inválido
+            'rol': 9999,  
             'telefono': '1111111111'
         }
         url = reverse('usuario-list')
@@ -202,7 +198,6 @@ class UsuarioAPITests(APITestCase):
         """Prueba que los campos requeridos sean obligatorios"""
         incomplete_data = {
             'username': 'incompleteuser',
-            # Falta email, password, rol, telefono
         }
         url = reverse('usuario-list')
         response = self.client.post(url, incomplete_data, format='json')
@@ -223,15 +218,14 @@ class UsuarioSerializerTests(TestCase):
             'telefono': '3333333333'
         }
         serializer = UsuarioSerializer(data=data)
-        # Verificar que los datos son válidos
         self.assertTrue(serializer.is_valid())
 
     def test_serializer_invalido(self):
         """Prueba que el serializer rechace datos incorrectos"""
         data = {
-            'username': '',  # Username vacío
-            'email': 'invalid-email',  # Email inválido
-            'rol': 9999  # ID de rol inválido
+            'username': '',  
+            'email': 'invalid-email', 
+            'rol': 9999  
         }
         serializer = UsuarioSerializer(data=data)
         self.assertFalse(serializer.is_valid())

@@ -3,8 +3,6 @@ from .models import (Categoria,Producto,Proveedor,
     Cliente,Empleado,FacturaVenta,
     DetalleVenta,Movimiento
 )
-from django.contrib.auth import get_user_model
-User = get_user_model()
 
         
 class CategoriaSerializer(serializers.ModelSerializer):

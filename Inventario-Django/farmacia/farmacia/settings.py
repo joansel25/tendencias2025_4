@@ -101,15 +101,15 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
 
-        'NAME': 'farmacia',       # Replace with your PostgreSQL database name,
+        'NAME': 'farmacia',      
 
-        'USER': 'postgres',     # Replace with your PostgreSQL username,
+        'USER': 'postgres',    
 
-        'PASSWORD': 'postgres',  # Replace with your PostgreSQL password,
+        'PASSWORD': 'postgres',  
 
-        'HOST': 'localhost',  # Or the IP address/hostname of your PostgreSQL server,
+        'HOST': 'localhost',  
 	
-        'PORT': '5432',  # Default PostgreSQL port, or specify if different,
+        'PORT': '5432', 
     }
 }
 
@@ -156,8 +156,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), #token de acceso valido 60 min
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=3), #refresh en 1 dia
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), #token de acceso
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=3), #token de refresh 
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,# por defecto usa SECRET_KEY
     "AUTH_HEADER_TYPES": ("Bearer",),

@@ -45,16 +45,12 @@ schema_view  = get_schema_view(
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('farmacia/', include('apps.task.urls')),#agregar las rutas configuradas en la api para que el servidor las incluyas al inciar
+    path('farmacia/', include('apps.task.urls')),#agregar las rutas configuradas en la api
     path('api/auth/', include('apps.usuario.urls')),  # Autenticación
     path('swagger/', schema_view.with_ui('swagger',cache_timeout =0), name = 'schema-swagger-ui'),# Ruta para Swagger UI
     path('redoc/', schema_view.with_ui('redoc',cache_timeout=0), name = 'schema-redoc'), # Ruta para ReDoc
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),# obtener los tokens
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),#obtener codigo de refrescar el token
     
-    #schema: schema: se refiere a que la API permite manipular datos de E/S en formato (JSON o YAML)
-    #swagger:es una interfaz gráfica interactiva que permite explorar y probar los endpoints de la API (se basa en schema)
-    #_________________________________________________________________________________
     
-    #redoc :es otra interfaz grafica para leer y enteder mas a detalle los endpoints de la API.(se basa en schema) 
 ]
