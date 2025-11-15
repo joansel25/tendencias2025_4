@@ -1,8 +1,6 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import UsuarioViewset
+from django.urls import path
+from .views import CustomTokenObtainPairView
 
-router  = DefaultRouter()
-router.register(r'usuario', UsuarioViewset, basename= 'usuario')
-urlpatterns = router.urls
-
+urlpatterns = [
+    path('token/', CustomTokenObtainPairView.as_view(), name='custom_token_obtain'),
+]

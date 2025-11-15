@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+import os
 from pathlib import Path
 from datetime import timedelta
 
@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-nhl#v+oclsu8o^7rl7i4dg7gr@$rt46s1yib*%s(_yhv0^6eu-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [".vercel.app", ".now.sh", '127.0.0.1', '0.0.0.0']
 
 
 # Application definition
@@ -39,20 +39,25 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'apps.task',
-    'apps.usuario', 
+    'apps.usuario',
     'rest_framework',
     'drf_yasg',
     'rest_framework_simplejwt',
+    'whitenoise.runserver_nostatic',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'farmacia.middleware.metrics.MetricsMiddleware',
 ]
 
 ROOT_URLCONF = 'farmacia.urls'
@@ -60,11 +65,12 @@ ROOT_URLCONF = 'farmacia.urls'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
     # 'DEFAULT_PERMISSION_CLASSES': [
-    #     'rest_framework.permissions.IsAuthenticated',  # ✅ Todas las vistas requieren autenticación por defecto
-    
+    #     'rest_framework.permissions.IsAuthenticated',
+    # ],
 }
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -101,18 +107,17 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
 
-        'NAME': 'farmacia',      
+        'NAME': 'farmacia',
 
-        'USER': 'postgres',    
+        'USER': 'postgres',
 
-        'PASSWORD': 'postgres',  
+        'PASSWORD': 'postgres',
 
-        'HOST': 'localhost',  
-	
-        'PORT': '5432', 
+        'HOST': 'localhost',
+
+        'PORT': '5432',
     }
 }
-
 
 
 # Password validation
@@ -156,11 +161,44 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), #token de acceso
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=3), #token de refresh 
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),  # token de acceso
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=3),  # token de refresh
     "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,# por defecto usa SECRET_KEY
+    "SIGNING_KEY": SECRET_KEY,  # por defecto usa SECRET_KEY
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+}
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # 👈 Tu frontend (Vite)
+    "http://127.0.0.1:5173",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'farmacia': {  # Logger para tu aplicación principal
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }
