@@ -45,28 +45,37 @@ def build_movimiento_id_pdf(movimiento):
     buf.seek(0)
     return buf
 
-def build_todos_movimientos_pdf(movimientos):
-    """Genera un PDF con todos los movimientos de inventario en formato tabular."""
+# pdf.py - FUNCIONES DE MOVIMIENTOS CORREGIDAS
+
+def build_movimiento_id_pdf(movimiento):
+    """Genera un PDF con los datos detallados de un movimiento de inventario."""
     buf = BytesIO()
     page = canvas.Canvas(buf, pagesize=letter)
     width, height = letter
 
-    page.setTitle('Todos los Movimientos de Inventario')
-    page.drawString(50, height - 30, "Todos los Movimientos de Inventario")
+    page.setTitle(f'Movimiento de Inventario - {movimiento.id}')
+    page.drawString(50, height - 30, f"Movimiento de Inventario #{movimiento.id}")
 
-    data = [["ID", "Tipo", "Fecha", "Producto", "Cantidad", "Cliente"]]
+    # Manejar campos que pueden ser None
+    cliente_nombre = movimiento.id_cliente.nombre if movimiento.id_cliente else "N/A"
+    proveedor_nombre = movimiento.id_proveedor.nombre if movimiento.id_proveedor else "N/A"
+    responsable_nombre = movimiento.responsable.nombre if movimiento.responsable else "Sistema"
 
-    for movimiento in movimientos:
-        data.append([ 
-            str(movimiento.id),
-            movimiento.tipo,
-            str(movimiento.fecha),
-            movimiento.id_producto.nombre,
-            str(movimiento.cantidad),
-            movimiento.id_cliente.nombre,
-        ])
+    info = [
+        ["Tipo de Movimiento:", movimiento.tipo],
+        ["Fecha:", str(movimiento.fecha)],
+        ["Producto:", movimiento.id_producto.nombre],
+        ["Cantidad:", str(movimiento.cantidad)],
+        ["Responsable:", responsable_nombre],
+    ]
 
-    table = Table(data, colWidths=[40, 60, 80, 100, 60, 100])
+    # Agregar campo según el tipo de movimiento
+    if movimiento.tipo == "entrada":
+        info.append(["Proveedor:", proveedor_nombre])
+    else:
+        info.append(["Cliente:", cliente_nombre])
+
+    table = Table(info, colWidths=[150, 300])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -78,7 +87,58 @@ def build_todos_movimientos_pdf(movimientos):
     ]))
 
     table.wrapOn(page, width, height)
-    table.drawOn(page, 30, height - 100)
+    table.drawOn(page, 50, height - 150)
+
+    page.showPage()
+    page.save()
+
+    buf.seek(0)
+    return buf
+
+def build_todos_movimientos_pdf(movimientos):
+    """Genera un PDF con todos los movimientos de inventario en formato tabular."""
+    buf = BytesIO()
+    page = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+
+    page.setTitle('Todos los Movimientos de Inventario')
+    page.drawString(50, height - 30, "Todos los Movimientos de Inventario")
+
+    # Encabezado con ambos campos
+    data = [["ID", "Tipo", "Fecha", "Producto", "Cantidad", "Proveedor", "Cliente", "Responsable"]]
+
+    for movimiento in movimientos:
+        # Manejar campos que pueden ser None
+        cliente_nombre = movimiento.id_cliente.nombre if movimiento.id_cliente else "N/A"
+        proveedor_nombre = movimiento.id_proveedor.nombre if movimiento.id_proveedor else "N/A"
+        responsable_nombre = movimiento.responsable.nombre if movimiento.responsable else "Sistema"
+
+        data.append([ 
+            str(movimiento.id),
+            movimiento.tipo,
+            str(movimiento.fecha),
+            movimiento.id_producto.nombre,
+            str(movimiento.cantidad),
+            proveedor_nombre,
+            cliente_nombre,
+            responsable_nombre,
+        ])
+
+    # Ajustar anchos de columnas
+    table = Table(data, colWidths=[30, 50, 70, 90, 50, 80, 80, 80])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),  # Reducir tamaño de fuente
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+
+    table.wrapOn(page, width, height)
+    table.drawOn(page, 20, height - 100)  # Ajustar posición
 
     page.showPage()
     page.save()
@@ -212,10 +272,12 @@ def build_todos_detalles_venta_pdf(detalles_venta):
     page.setTitle('Todos los Detalles de Venta')
     page.drawString(50, height - 30, "Todos los Detalles de Venta")
 
-    data = [["ID", "Factura", "Producto", "Cantidad", "Precio Unitario", "Subtotal"]]
-
+    data = [["Fecha","ID", "Factura", "Producto", "Cantidad", "Precio Unitario", "Subtotal"]]
+    
+    total_general = 0
     for detalle in detalles_venta:
         data.append([
+            str(detalle.id_factura.fecha),
             str(detalle.id),
             str(detalle.id_factura.id),
             detalle.id_producto.nombre,
@@ -223,8 +285,14 @@ def build_todos_detalles_venta_pdf(detalles_venta):
             str(detalle.precio_unitario),
             str(detalle.cantidad * detalle.precio_unitario),
         ])
+        total_general += detalle.cantidad * detalle.precio_unitario
+    
+    data.append(["", "", "", "","", "Total General:", str(total_general)])
+    
+       
+    
 
-    table = Table(data, colWidths=[40, 60, 100, 60, 80, 80])
+    table = Table(data, colWidths=[95,40, 60, 100, 60, 80, 80, 100])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
