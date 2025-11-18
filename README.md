@@ -1,5 +1,5 @@
-<!-- LINK Del BACK: https://prueba-de-despliegue-wyj1.onrender.com
-LINK DEL FRONTEND : frontend-inventory-farmacia.netlify.app -->
+LINK Del BACK: https://prueba-de-despliegue-wyj1.onrender.com
+LINK DEL FRONTEND : frontend-inventory-farmacia.netlify.app 
 
 Documentación de la API – Sistema de Gestión de Inventarios (Farmacia)
 
