@@ -19,6 +19,8 @@ import PerfilCliente from "./components/PerfilCliente";
 import Usuarios from "./components/Usuarios";
 import Reportes from "./components/Reporte";
 import RegistrarVenta from "./components/RegistrarVenta";
+import Productos from "./components/Productos";   
+import Gmovimientos from "./components/GestionMovimiento"
 
 // PrivateRoute
 import PrivateRoute from "./router/PrivateRoute";
@@ -39,6 +41,15 @@ function App() {
           element={
             <PrivateRoute rolPermitido="administrador">
               <AdminDashboard />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <PrivateRoute rolPermitido="administrador">
+              <Gmovimientos />
             </PrivateRoute>
           }
         />
@@ -68,8 +79,15 @@ function App() {
             </PrivateRoute>
           }
         />
-        
-        {/* ✅ RUTA CRÍTICA - REGISTRAR VENTA */}
+
+        <Route
+          path="/empleado"
+          element={
+            <PrivateRoute rolPermitido="empleado">
+              <Movimientos />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/registrar-venta"
           element={

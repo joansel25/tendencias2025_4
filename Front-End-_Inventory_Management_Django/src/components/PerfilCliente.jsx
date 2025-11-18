@@ -1,8 +1,8 @@
-// PerfilClienteCRUD.jsx - VERSIÓN MEJORADA CON ESTILOS DINÁMICOS
+// PerfilClienteCRUD.jsx - VERSIÓN MEJORADA CON DATOS REALES Y ESTILO PROFESIONAL
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
-import { ArrowLeft, User, Mail, Phone, Edit, Save, X, Trash2, Shield } from "lucide-react";
+import { ArrowLeft, User, Mail, Phone, Edit, Save, X, Trash2, Shield, AlertCircle, CheckCircle, Info } from "lucide-react";
 
 export default function PerfilClienteCRUD() {
   const navigate = useNavigate();
@@ -12,85 +12,144 @@ export default function PerfilClienteCRUD() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  // Cargar perfil
+  // Cargar perfil desde múltiples fuentes
   useEffect(() => {
     cargarPerfil();
   }, []);
 
   const cargarPerfil = async () => {
     try {
-      const token = localStorage.getItem("access");
-      if (!token) {
-        navigate("/login");
-        return;
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const userId = userData.id;
+
+      if (!userId) {
+        throw new Error("No se pudo obtener la información del usuario");
       }
 
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const userId = payload.user_id;
+      console.log("🔍 Cargando perfil para usuario:", userId);
 
-      const res = await api.get(`/farmacia/clientes/?usuario=${userId}`);
-      const clienteData = res.data[0];
-      setPerfil(clienteData);
+      let perfilCargado = null;
+
+      // ✅ ESTRATEGIA 1: Intentar cargar desde el backend
+      try {
+        // Cargar datos actualizados del usuario
+        const usuarioRes = await api.get(`/api/auth/usuarios/${userId}/`);
+        const usuarioData = usuarioRes.data;
+        
+        console.log("✅ Datos de usuario desde backend:", usuarioData);
+
+        perfilCargado = {
+          id: usuarioData.id,
+          nombre: usuarioData.first_name || usuarioData.username || "No especificado",
+          correo: usuarioData.email || "No especificado",
+          telefono: usuarioData.telefono || "No especificado",
+          username: usuarioData.username,
+          fecha_registro: usuarioData.date_joined
+        };
+
+      } catch (backendError) {
+        console.warn("⚠️ No se pudieron cargar datos del backend:", backendError);
+        
+        // ✅ ESTRATEGIA 2: Usar datos del localStorage como respaldo
+        perfilCargado = {
+          id: userData.id,
+          nombre: userData.first_name || userData.username || "No especificado",
+          correo: userData.email || "No especificado",
+          telefono: userData.telefono || "No especificado",
+          username: userData.username,
+          fecha_registro: "No disponible"
+        };
+      }
+
+      setPerfil(perfilCargado);
       setFormData({
-        nombre: clienteData.nombre,
-        correo: clienteData.correo,
-        telefono: clienteData.telefono
+        nombre: perfilCargado.nombre,
+        correo: perfilCargado.correo,
+        telefono: perfilCargado.telefono
       });
+
+      console.log("✅ Perfil final cargado:", perfilCargado);
+
     } catch (error) {
-      console.error("Error al cargar perfil:", error);
+      console.error("❌ Error al cargar perfil:", error);
+      setError("No se pudo cargar la información del perfil");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ Función para actualizar datos en localStorage
+  const actualizarLocalStorage = (nuevosDatos) => {
+    try {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const datosActualizados = {
+        ...userData,
+        ...nuevosDatos
+      };
+      localStorage.setItem("user", JSON.stringify(datosActualizados));
+      console.log("✅ localStorage actualizado:", datosActualizados);
+    } catch (error) {
+      console.error("Error actualizando localStorage:", error);
     }
   };
 
   // Guardar cambios con animación
   const guardarCambios = async () => {
     setSaving(true);
+    setError("");
+    setSuccess("");
+
     try {
-      await api.patch(`/farmacia/clientes/${perfil.id}/`, formData);
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const updateData = {
+        first_name: formData.nombre,
+        email: formData.correo,
+        telefono: formData.telefono
+      };
+
+      // ✅ Actualizar en el backend
+      try {
+        await api.patch(`/api/auth/usuarios/${userData.id}/`, updateData);
+        console.log("✅ Perfil actualizado en backend");
+      } catch (backendError) {
+        console.warn("⚠️ No se pudo actualizar en backend:", backendError);
+        throw new Error("No se pudo conectar con el servidor para guardar los cambios");
+      }
+
+      // ✅ Actualizar en localStorage
+      actualizarLocalStorage(updateData);
+
+      // ✅ Actualizar estado local
       setPerfil({ ...perfil, ...formData });
       setEditMode(false);
-      
-      // Animación de éxito
-      const saveBtn = document.querySelector('.btn-success');
-      if (saveBtn) {
-        saveBtn.classList.add('btn-pulse');
-        setTimeout(() => saveBtn.classList.remove('btn-pulse'), 600);
-      }
-      
-      setTimeout(() => {
-        alert("✅ Perfil actualizado exitosamente");
-      }, 300);
-      
+      setSuccess("✅ Perfil actualizado exitosamente");
+
+      // Limpiar mensaje de éxito después de 3 segundos
+      setTimeout(() => setSuccess(""), 3000);
+
     } catch (error) {
       console.error("Error al actualizar:", error);
-      alert("❌ Error al actualizar el perfil");
+      setError(error.message || "❌ Error al actualizar el perfil");
     } finally {
       setSaving(false);
     }
   };
 
-  // Eliminar cuenta
-  const eliminarCuenta = async () => {
-    try {
-      await api.delete(`/farmacia/clientes/${perfil.id}/`);
-      localStorage.clear();
-      
-      // Animación de despedida
-      document.querySelector('.card')?.classList.add('fade-out');
-      setTimeout(() => {
-        alert("👋 Cuenta eliminada exitosamente");
-        navigate("/login");
-      }, 500);
-      
-    } catch (error) {
-      console.error("Error al eliminar:", error);
-      alert("❌ Error al eliminar la cuenta");
-    }
+  // Cerrar sesión
+  const cerrarSesion = () => {
+    localStorage.clear();
+    
+    // Animación de despedida
+    document.querySelector('.card')?.classList.add('fade-out');
+    setTimeout(() => {
+      navigate("/login");
+    }, 500);
   };
 
-  // Cancelar edición con animación
+  // Cancelar edición
   const cancelarEdicion = () => {
     setFormData({
       nombre: perfil.nombre,
@@ -98,30 +157,56 @@ export default function PerfilClienteCRUD() {
       telefono: perfil.telefono
     });
     setEditMode(false);
+    setError("");
+    setSuccess("");
   };
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center vh-100" style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
-        <div className="spinner-border text-success" role="status">
-          <span className="visually-hidden">Cargando...</span>
+      <div className="min-vh-100 d-flex justify-content-center align-items-center" 
+           style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
+        <div className="text-center">
+          <div className="spinner-border text-success mb-3" role="status">
+            <span className="visually-hidden">Cargando...</span>
+          </div>
+          <p className="text-success fw-semibold">Cargando tu perfil...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!perfil) {
+    return (
+      <div className="min-vh-100 d-flex justify-content-center align-items-center" 
+           style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
+        <div className="card shadow-lg border-0 rounded-4 text-center p-4" style={{ maxWidth: "500px" }}>
+          <AlertCircle size={64} className="text-warning mb-3" />
+          <h4 className="text-warning fw-bold mb-3">Error al cargar</h4>
+          <p className="text-muted mb-4">{error || "No se pudo cargar el perfil"}</p>
+          <button
+            onClick={() => navigate("/cliente")}
+            className="btn btn-success"
+          >
+            Volver al Dashboard
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="d-flex justify-content-center align-items-center min-vh-100 py-5" style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
-      <div className="container" style={{ maxWidth: "650px" }}>
+    <div className="min-vh-100 py-4" 
+         style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
+      <div className="container" style={{ maxWidth: "700px" }}>
         
-        {/* Header con botones animados */}
+        {/* Header con animación */}
         <div className="d-flex justify-content-between align-items-center mb-4 animate-slide-down">
           <button 
-            onClick={() => navigate(-1)} 
+            onClick={() => navigate("/cliente")} 
             className="btn btn-outline-success d-flex align-items-center gap-2 shadow-sm hover-lift"
           >
             <ArrowLeft size={18} />
-            Volver
+            Volver al Dashboard
           </button>
           
           {!editMode ? (
@@ -148,19 +233,36 @@ export default function PerfilClienteCRUD() {
               >
                 {saving ? (
                   <>
-                    <div className="spinner-border spinner-border-sm" role="status"></div>
+                    <div className="spinner-border spinner-border-sm me-2" />
                     Guardando...
                   </>
                 ) : (
                   <>
                     <Save size={18} />
-                    Guardar
+                    Guardar Cambios
                   </>
                 )}
               </button>
             </div>
           )}
         </div>
+
+        {/* Mensajes de estado */}
+        {success && (
+          <div className="alert alert-success alert-dismissible fade show mb-4 d-flex align-items-center" role="alert">
+            <CheckCircle size={20} className="me-2" />
+            <span className="flex-grow-1">{success}</span>
+            <button type="button" className="btn-close" onClick={() => setSuccess("")}></button>
+          </div>
+        )}
+
+        {error && (
+          <div className="alert alert-danger alert-dismissible fade show mb-4 d-flex align-items-center" role="alert">
+            <AlertCircle size={20} className="me-2" />
+            <span className="flex-grow-1">{error}</span>
+            <button type="button" className="btn-close" onClick={() => setError("")}></button>
+          </div>
+        )}
 
         {/* Tarjeta principal con efectos */}
         <div className="card shadow-lg border-0 rounded-4 overflow-hidden hover-lift transition-all">
@@ -177,10 +279,18 @@ export default function PerfilClienteCRUD() {
           </div>
 
           <div className="card-body p-5">
+            {/* Información del sistema */}
+            <div className="alert alert-info mb-4 d-flex align-items-center">
+              <Info size={20} className="me-2 flex-shrink-0" />
+              <small>
+                <strong>💡 Información:</strong> Los cambios se sincronizan con tu cuenta.
+              </small>
+            </div>
+
             <div className="space-y-4">
               {/* Campo Nombre */}
               <div className="d-flex align-items-center gap-3 p-3 rounded-3 bg-light hover-glow transition-all">
-                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0"
                      style={{ width: '45px', height: '45px' }}>
                   <User size={20} />
                 </div>
@@ -192,6 +302,7 @@ export default function PerfilClienteCRUD() {
                       className="form-control mt-1 border-success shadow-sm focus-glow"
                       value={formData.nombre}
                       onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+                      placeholder="Ingresa tu nombre completo"
                     />
                   ) : (
                     <p className="fw-bold text-dark mb-0 fs-5">{perfil.nombre}</p>
@@ -201,7 +312,7 @@ export default function PerfilClienteCRUD() {
 
               {/* Campo Email */}
               <div className="d-flex align-items-center gap-3 p-3 rounded-3 bg-light hover-glow transition-all">
-                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0"
                      style={{ width: '45px', height: '45px' }}>
                   <Mail size={20} />
                 </div>
@@ -213,6 +324,7 @@ export default function PerfilClienteCRUD() {
                       className="form-control mt-1 border-success shadow-sm focus-glow"
                       value={formData.correo}
                       onChange={(e) => setFormData({...formData, correo: e.target.value})}
+                      placeholder="Ingresa tu correo electrónico"
                     />
                   ) : (
                     <p className="fw-bold text-dark mb-0 fs-5">{perfil.correo}</p>
@@ -222,7 +334,7 @@ export default function PerfilClienteCRUD() {
 
               {/* Campo Teléfono */}
               <div className="d-flex align-items-center gap-3 p-3 rounded-3 bg-light hover-glow transition-all">
-                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+                <div className="bg-success text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0"
                      style={{ width: '45px', height: '45px' }}>
                   <Phone size={20} />
                 </div>
@@ -234,15 +346,32 @@ export default function PerfilClienteCRUD() {
                       className="form-control mt-1 border-success shadow-sm focus-glow"
                       value={formData.telefono}
                       onChange={(e) => setFormData({...formData, telefono: e.target.value})}
+                      placeholder="Ingresa tu número de teléfono"
                     />
                   ) : (
                     <p className="fw-bold text-dark mb-0 fs-5">{perfil.telefono}</p>
                   )}
                 </div>
               </div>
+
+              {/* Información adicional (solo lectura) */}
+              {!editMode && (
+                <>
+                  <div className="d-flex align-items-center gap-3 p-3 rounded-3 bg-light">
+                    <div className="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm flex-shrink-0"
+                         style={{ width: '45px', height: '45px' }}>
+                      <User size={20} />
+                    </div>
+                    <div className="flex-grow-1">
+                      <small className="text-muted fw-semibold">Usuario</small>
+                      <p className="fw-bold text-dark mb-0">{perfil.username}</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Sección de acciones peligrosas */}
+            {/* Sección de acciones */}
             {!editMode && (
               <div className="text-center mt-5 pt-4 border-top">
                 <button 
@@ -250,31 +379,34 @@ export default function PerfilClienteCRUD() {
                   className="btn btn-outline-danger d-flex align-items-center gap-2 mx-auto hover-shake"
                 >
                   <Trash2 size={16} />
-                  Eliminar Mi Cuenta
+                  Cerrar Sesión
                 </button>
+                <small className="text-muted d-block mt-2">
+                  Esta acción cerrará tu sesión actual
+                </small>
               </div>
             )}
           </div>
         </div>
 
-        {/* Modal de confirmación para eliminar cuenta */}
+        {/* Modal de confirmación para cerrar sesión */}
         {showDeleteConfirm && (
           <div className="modal fade show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content border-0 shadow-lg rounded-4">
-                <div className="modal-header bg-danger text-white">
+                <div className="modal-header bg-warning text-dark">
                   <h5 className="modal-title d-flex align-items-center gap-2">
                     <Shield size={20} />
-                    Confirmar Eliminación
+                    Confirmar Cierre de Sesión
                   </h5>
                 </div>
                 <div className="modal-body text-center p-4">
-                  <div className="text-danger mb-3">
-                    <Trash2 size={48} />
+                  <div className="text-warning mb-3">
+                    <AlertCircle size={48} />
                   </div>
-                  <h6 className="fw-bold">¿Estás seguro de eliminar tu cuenta?</h6>
+                  <h6 className="fw-bold">¿Estás seguro de cerrar tu sesión?</h6>
                   <p className="text-muted mb-0">
-                    Esta acción no se puede deshacer. Se perderán todos tus datos y historial de compras.
+                    Serás redirigido al login y deberás iniciar sesión nuevamente para acceder.
                   </p>
                 </div>
                 <div className="modal-footer justify-content-center border-0">
@@ -285,11 +417,11 @@ export default function PerfilClienteCRUD() {
                     Cancelar
                   </button>
                   <button 
-                    onClick={eliminarCuenta} 
-                    className="btn btn-danger px-4 d-flex align-items-center gap-2"
+                    onClick={cerrarSesion} 
+                    className="btn btn-warning px-4 d-flex align-items-center gap-2 text-white"
                   >
                     <Trash2 size={16} />
-                    Sí, Eliminar
+                    Sí, Cerrar Sesión
                   </button>
                 </div>
               </div>
@@ -322,10 +454,6 @@ export default function PerfilClienteCRUD() {
           animation: shake 0.5s;
         }
         
-        .btn-pulse {
-          animation: pulse 0.6s;
-        }
-        
         .fade-out {
           animation: fadeOut 0.5s forwards;
         }
@@ -340,7 +468,11 @@ export default function PerfilClienteCRUD() {
         }
         
         .animate-slide-down {
-           animation: slideDown 2s ease-out ;
+           animation: slideDown 0.6s ease-out;
+        }
+        
+        .transition-all {
+          transition: all 0.3s ease;
         }
         
         @keyframes pulse {
@@ -373,10 +505,6 @@ export default function PerfilClienteCRUD() {
         @keyframes slideDown {
           from { opacity: 0; transform: translateY(-20px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .transition-all {
-          transition: all 0.3s ease;
         }
       `}</style>
     </div>

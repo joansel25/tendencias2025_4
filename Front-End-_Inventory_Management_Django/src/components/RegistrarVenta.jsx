@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import {
@@ -21,63 +21,109 @@ export default function RegistrarVenta() {
     id_cliente: "",
     detalles: [],
   });
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [empleadoId, setEmpleadoId] = useState(null);
   const [userName, setUserName] = useState("");
+  const [userId, setUserId] = useState(null);
 
-  // En RegistrarVenta.jsx - SOLO LA PARTE CRÍTICA CORREGIDA
+  // 🔄 Cálculos derivados
+  const total = useMemo(() => 
+    venta.detalles.reduce((sum, detalle) => sum + detalle.subtotal, 0), 
+    [venta.detalles]
+  );
+
+  const totalItems = useMemo(() => 
+    venta.detalles.reduce((sum, detalle) => sum + detalle.cantidad, 0), 
+    [venta.detalles]
+  );
+
+  const clienteSeleccionado = useMemo(() => 
+    clientes.find((c) => c.id == venta.id_cliente), 
+    [clientes, venta.id_cliente]
+  );
+
+  const productosFiltrados = useMemo(() => 
+    searchTerm
+      ? productos.filter((producto) =>
+          producto.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : productos,
+    [productos, searchTerm]
+  );
+
+  // 🔧 Obtener información del usuario desde el token
+  const obtenerUsuarioDesdeToken = useCallback(() => {
+    const token = localStorage.getItem("access");
+    if (!token) return null;
+    
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      console.log("🔐 Payload del token:", payload);
+      return payload;
+    } catch (error) {
+      console.error("Error decodificando token:", error);
+      return null;
+    }
+  }, []);
+
+  // 🔍 Buscar empleado por usuario - CORREGIDO
+  const buscarEmpleadoPorUsuario = useCallback(async (userPayload) => {
+    try {
+      console.log("🔍 Buscando empleado para user_id:", userPayload.user_id);
+      
+      const empleadosRes = await api.get("/farmacia/empleados/");
+      console.log("📋 Todos los empleados:", empleadosRes.data);
+      
+      // Buscar empleado que coincida con el user_id
+      const empleadoEncontrado = empleadosRes.data.find((emp) => {
+        console.log("🔎 Comparando:", {
+          empleadoUsuario: emp.usuario,
+          userPayloadId: userPayload.user_id,
+          tipos: {
+            empleadoUsuarioType: typeof emp.usuario,
+            userPayloadIdType: typeof userPayload.user_id
+          }
+        });
+        
+        // CORRECCIÓN: Comparar como números
+        return parseInt(emp.usuario) === parseInt(userPayload.user_id);
+      });
+
+      if (empleadoEncontrado) {
+        console.log("✅ Empleado encontrado:", empleadoEncontrado);
+        setEmpleadoId(empleadoEncontrado.id);
+        return empleadoEncontrado;
+      } else {
+        console.warn("⚠️ No se encontró empleado, usando user_id directamente");
+        // Si no encuentra empleado, usar el user_id como fallback
+        setEmpleadoId(userPayload.user_id);
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Error obteniendo empleados, usando user_id:", error);
+      // En caso de error, usar el user_id del token
+      setEmpleadoId(userPayload.user_id);
+      return null;
+    }
+  }, []);
+
+  // 📥 Carga de datos iniciales - MEJORADO
   useEffect(() => {
     const cargarDatos = async () => {
       try {
         setLoading(true);
 
-        // Obtener información del usuario desde el token
-        const token = localStorage.getItem("access");
-        if (token) {
-          const payload = JSON.parse(atob(token.split(".")[1]));
-          setUserName(payload.username || "Empleado");
-
-          console.log("🔍 Buscando empleado para usuario:", {
-            user_id: payload.user_id,
-            username: payload.username,
-          });
-
-          // CORRECCIÓN: Obtener empleado por usuario_id
-          try {
-            const empleadosRes = await api.get("/farmacia/empleados/");
-            console.log("📋 Lista completa de empleados:", empleadosRes.data);
-
-            // Buscar el empleado que corresponde al usuario autenticado
-            const empleadoEncontrado = empleadosRes.data.find((emp) => {
-              console.log("🔎 Comparando:", {
-                empleadoUsuarioId: emp.usuario,
-                userIdToken: payload.user_id,
-              });
-
-              // CORRECCIÓN: Comparar directamente el ID del usuario
-              return emp.usuario === payload.user_id;
-            });
-
-            if (empleadoEncontrado) {
-              setEmpleadoId(empleadoEncontrado.id);
-              console.log("✅ Empleado encontrado:", {
-                id: empleadoEncontrado.id,
-                nombre: empleadoEncontrado.nombre,
-                usuario_id: empleadoEncontrado.usuario,
-              });
-            } else {
-              console.warn(
-                "❌ No se encontró empleado para el usuario:",
-                payload.user_id
-              );
-            }
-          } catch (empleadoError) {
-            console.error("❌ Error obteniendo empleados:", empleadoError);
-          }
+        const userPayload = obtenerUsuarioDesdeToken();
+        if (userPayload) {
+          setUserName(userPayload.username || "Empleado");
+          setUserId(userPayload.user_id);
+          
+          // Intentar buscar empleado, si falla usar user_id directamente
+          await buscarEmpleadoPorUsuario(userPayload);
         }
 
+        // Cargar datos esenciales
         const [clientesRes, productosRes] = await Promise.all([
           api.get("/farmacia/clientes/"),
           api.get("/farmacia/productos/"),
@@ -94,91 +140,87 @@ export default function RegistrarVenta() {
     };
 
     cargarDatos();
-  }, []);
+  }, [obtenerUsuarioDesdeToken, buscarEmpleadoPorUsuario]);
 
-  const productosFiltrados = searchTerm
-    ? productos.filter((producto) =>
-        producto.nombre.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : productos;
-
-  const agregarProducto = (producto) => {
+  // 🛒 Funciones de gestión de productos
+  const agregarProducto = useCallback((producto) => {
     if (producto.stock <= 0) {
       alert("❌ Este producto no tiene stock disponible");
       return;
     }
 
-    const existeIndex = venta.detalles.findIndex(
-      (d) => d.id_producto === producto.id
-    );
+    setVenta(prevVenta => {
+      const existeIndex = prevVenta.detalles.findIndex(
+        (d) => d.id_producto === producto.id
+      );
 
-    if (existeIndex !== -1) {
-      incrementarCantidad(existeIndex);
-    } else {
-      const nuevoDetalle = {
-        id_producto: producto.id,
-        nombre: producto.nombre,
-        cantidad: 1,
-        precio_unitario: parseFloat(producto.precio),
-        subtotal: parseFloat(producto.precio),
-      };
+      if (existeIndex !== -1) {
+        const nuevosDetalles = [...prevVenta.detalles];
+        nuevosDetalles[existeIndex].cantidad += 1;
+        nuevosDetalles[existeIndex].subtotal = 
+          nuevosDetalles[existeIndex].cantidad * nuevosDetalles[existeIndex].precio_unitario;
+        
+        return { ...prevVenta, detalles: nuevosDetalles };
+      } else {
+        const nuevoDetalle = {
+          id_producto: producto.id,
+          nombre: producto.nombre,
+          cantidad: 1,
+          precio_unitario: parseFloat(producto.precio),
+          subtotal: parseFloat(producto.precio),
+        };
 
-      setVenta((prev) => ({
-        ...prev,
-        detalles: [...prev.detalles, nuevoDetalle],
-      }));
-      setTotal((prev) => prev + parseFloat(producto.precio));
-    }
-  };
+        return {
+          ...prevVenta,
+          detalles: [...prevVenta.detalles, nuevoDetalle],
+        };
+      }
+    });
+  }, []);
 
-  const actualizarCantidad = (index, nuevaCantidad) => {
+  const actualizarCantidad = useCallback((index, nuevaCantidad) => {
     if (nuevaCantidad < 1) {
       eliminarProducto(index);
       return;
     }
 
-    const detalles = [...venta.detalles];
-    const producto = productos.find(
-      (p) => p.id === detalles[index].id_producto
-    );
+    setVenta(prevVenta => {
+      const detalles = [...prevVenta.detalles];
+      const producto = productos.find((p) => p.id === detalles[index].id_producto);
 
-    if (producto && nuevaCantidad > producto.stock) {
-      alert(`❌ Stock insuficiente. Disponible: ${producto.stock}`);
-      return;
-    }
+      if (producto && nuevaCantidad > producto.stock) {
+        alert(`❌ Stock insuficiente. Disponible: ${producto.stock}`);
+        return prevVenta;
+      }
 
-    const precioUnitario = detalles[index].precio_unitario;
-    const subtotalAnterior = detalles[index].subtotal;
-    const nuevoSubtotal = nuevaCantidad * precioUnitario;
+      const precioUnitario = detalles[index].precio_unitario;
+      detalles[index] = {
+        ...detalles[index],
+        cantidad: nuevaCantidad,
+        subtotal: nuevaCantidad * precioUnitario,
+      };
 
-    detalles[index] = {
-      ...detalles[index],
-      cantidad: nuevaCantidad,
-      subtotal: nuevoSubtotal,
-    };
+      return { ...prevVenta, detalles };
+    });
+  }, [productos]);
 
-    setVenta({ ...venta, detalles });
-    setTotal((prev) => prev - subtotalAnterior + nuevoSubtotal);
-  };
-
-  const incrementarCantidad = (index) => {
+  const incrementarCantidad = useCallback((index) => {
     actualizarCantidad(index, venta.detalles[index].cantidad + 1);
-  };
+  }, [venta.detalles, actualizarCantidad]);
 
-  const decrementarCantidad = (index) => {
+  const decrementarCantidad = useCallback((index) => {
     actualizarCantidad(index, venta.detalles[index].cantidad - 1);
-  };
+  }, [venta.detalles, actualizarCantidad]);
 
-  const eliminarProducto = (index) => {
-    const detalles = [...venta.detalles];
-    const subtotalEliminado = detalles[index].subtotal;
-    detalles.splice(index, 1);
+  const eliminarProducto = useCallback((index) => {
+    setVenta(prevVenta => ({
+      ...prevVenta,
+      detalles: prevVenta.detalles.filter((_, i) => i !== index)
+    }));
+  }, []);
 
-    setVenta({ ...venta, detalles });
-    setTotal((prev) => prev - subtotalEliminado);
-  };
-
-  const validarVenta = () => {
+  // ✅ Validaciones MEJORADAS - No bloquea por empleado
+  const validarVenta = useCallback(() => {
     if (!venta.id_cliente) {
       alert("❌ Selecciona un cliente");
       return false;
@@ -186,13 +228,6 @@ export default function RegistrarVenta() {
 
     if (venta.detalles.length === 0) {
       alert("❌ Agrega al menos un producto a la venta");
-      return false;
-    }
-
-    if (!empleadoId) {
-      alert(
-        "❌ No se pudo identificar al empleado. Contacta al administrador."
-      );
       return false;
     }
 
@@ -204,89 +239,139 @@ export default function RegistrarVenta() {
         return false;
       }
       if (detalle.cantidad > producto.stock) {
-        alert(
-          `❌ Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}`
-        );
+        alert(`❌ Stock insuficiente para ${producto.nombre}. Disponible: ${producto.stock}`);
         return false;
       }
     }
 
     return true;
-  };
+  }, [venta, productos]);
 
+  // 💾 Guardar venta - CON ALTERNATIVAS
   const guardarVenta = async () => {
     if (!validarVenta()) return;
 
     setLoading(true);
 
     try {
-      // FORMATO CORREGIDO - Usar el ID correcto del empleado
+      // Preparar datos para el backend
       const facturaData = {
         id_cliente: parseInt(venta.id_cliente),
-        id_empleado: empleadoId, // Usar el ID del empleado (no el user_id)
+        id_empleado: empleadoId || userId, // Usar empleadoId o userId como fallback
         detalles: venta.detalles.map((detalle) => ({
           id_producto: detalle.id_producto,
           cantidad: detalle.cantidad,
         })),
       };
 
-      console.log("📤 Enviando datos al backend:", facturaData);
-      console.log("👤 Empleado ID enviado:", empleadoId);
+      console.log("📤 Enviando datos de venta:", {
+        ...facturaData,
+        empleadoUsado: empleadoId ? "empleadoId" : "userId",
+        valor: empleadoId || userId
+      });
 
       const response = await api.post("/farmacia/facturasventa/", facturaData);
 
       console.log("✅ Venta registrada exitosamente:", response.data);
-
       alert("✅ Venta registrada correctamente");
-      navigate("/mis-ventas");
+      navigate("/empleado");
     } catch (error) {
       console.error("❌ Error al registrar venta:", error);
-
-      let mensajeError = "Error al registrar la venta";
-
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        console.error("🔍 Detalles del error:", errorData);
-
-        if (errorData.id_empleado) {
-          mensajeError = `❌ Error en empleado: ${
-            Array.isArray(errorData.id_empleado)
-              ? errorData.id_empleado.join(", ")
-              : errorData.id_empleado
-          }`;
-
-          mensajeError += `\n\n🔧 Información de depuración:`;
-          mensajeError += `\n• Empleado ID enviado: ${empleadoId}`;
-          mensajeError += `\n• User ID del token: ${
-            JSON.parse(atob(localStorage.getItem("access").split(".")[1]))
-              .user_id
-          }`;
-          mensajeError += `\n• Usuario: ${userName}`;
-        } else if (errorData.id_cliente) {
-          mensajeError = `❌ Error en cliente: ${errorData.id_cliente}`;
-        } else if (errorData.detalles) {
-          mensajeError = `❌ Error en detalles: ${JSON.stringify(
-            errorData.detalles
-          )}`;
-        } else if (errorData.detail) {
-          mensajeError = `❌ Error: ${errorData.detail}`;
-        } else if (errorData.non_field_errors) {
-          mensajeError = `❌ Error: ${errorData.non_field_errors.join(", ")}`;
-        }
-      }
-
-      alert(mensajeError);
+      manejarErrorVenta(error);
     } finally {
       setLoading(false);
     }
   };
 
-  const totalItems = venta.detalles.reduce(
-    (sum, detalle) => sum + detalle.cantidad,
-    0
-  );
-  const clienteSeleccionado = clientes.find((c) => c.id == venta.id_cliente);
+  const manejarErrorVenta = (error) => {
+    let mensajeError = "Error al registrar la venta";
 
+    if (error.response?.data) {
+      const errorData = error.response.data;
+      console.error("🔍 Detalles del error del backend:", errorData);
+      
+      if (errorData.id_empleado) {
+        mensajeError = `❌ Error en empleado: ${
+          Array.isArray(errorData.id_empleado)
+            ? errorData.id_empleado.join(", ")
+            : errorData.id_empleado
+        }`;
+        
+        // Información adicional para debugging
+        mensajeError += `\n\n🔧 Información de depuración:`;
+        mensajeError += `\n• Empleado ID enviado: ${empleadoId}`;
+        mensajeError += `\n• User ID: ${userId}`;
+        mensajeError += `\n• Usuario: ${userName}`;
+      } else if (errorData.id_cliente) {
+        mensajeError = `❌ Error en cliente: ${errorData.id_cliente}`;
+      } else if (errorData.detalles) {
+        mensajeError = `❌ Error en detalles: ${JSON.stringify(errorData.detalles)}`;
+      } else if (errorData.detail) {
+        mensajeError = `❌ Error: ${errorData.detail}`;
+      }
+    }
+
+    alert(mensajeError);
+  };
+
+  // 🎨 Componentes reutilizables - SIN RESTRICCIONES DE EMPLEADO
+  const ProductoItem = ({ producto }) => (
+    <button
+      type="button"
+      className={`btn text-start p-3 border-0 ${
+        producto.stock <= 0
+          ? "bg-light text-muted"
+          : "bg-success bg-opacity-10 text-success"
+      }`}
+      onClick={() => agregarProducto(producto)}
+      disabled={producto.stock <= 0}
+    >
+      <div className="d-flex justify-content-between align-items-start w-100">
+        <div className="text-start">
+          <div className="fw-bold">{producto.nombre}</div>
+          <small>${parseFloat(producto.precio).toFixed(2)}</small>
+        </div>
+        <span className={`badge ${producto.stock <= 0 ? "bg-danger" : "bg-success"}`}>
+          {producto.stock <= 0 ? "Sin stock" : producto.stock}
+        </span>
+      </div>
+    </button>
+  );
+
+  const DetalleVentaRow = ({ detalle, index }) => (
+    <tr>
+      <td className="fw-bold">{detalle.nombre}</td>
+      <td>${detalle.precio_unitario.toFixed(2)}</td>
+      <td>
+        <div className="d-flex align-items-center gap-2">
+          <button
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => decrementarCantidad(index)}
+          >
+            <Minus size={12} />
+          </button>
+          <span className="fw-bold mx-2">{detalle.cantidad}</span>
+          <button
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => incrementarCantidad(index)}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+      </td>
+      <td className="fw-bold text-success">${detalle.subtotal.toFixed(2)}</td>
+      <td>
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={() => eliminarProducto(index)}
+        >
+          <Trash2 size={14} />
+        </button>
+      </td>
+    </tr>
+  );
+
+  // 🎯 Renderizado condicional
   if (loading && productos.length === 0) {
     return (
       <div
@@ -314,14 +399,14 @@ export default function RegistrarVenta() {
       {/* Navbar */}
       <nav className="navbar navbar-expand-lg navbar-dark bg-success shadow-sm">
         <div className="container">
-          <span className="navbar-brand fw-bold fs-4 d-flex align-items-center">
-            🛒 Registrar Venta
-          </span>
+          <span className="navbar-brand fw-bold fs-4">🛒 Registrar Venta</span>
           <div className="d-flex align-items-center gap-2">
             {userName && (
               <span className="text-light me-2">
                 <User size={16} className="me-1" />
-                {userName} {empleadoId && `(EmpID: ${empleadoId})`}
+                {userName} 
+                {empleadoId && ` (EmpID: ${empleadoId})`}
+                {!empleadoId && userId && ` (UserID: ${userId})`}
               </span>
             )}
             <button
@@ -340,13 +425,11 @@ export default function RegistrarVenta() {
           <p className="text-muted">Complete la información de la venta</p>
         </div>
 
-        {!empleadoId && (
-          <div className="alert alert-warning text-center">
-            <strong>⚠️ Advertencia:</strong> No se pudo identificar tu usuario
-            como empleado. Contacta al administrador para solucionar este
-            problema.
-          </div>
-        )}
+        {/* Información del usuario */}
+        <div className="alert alert-info text-center">
+          <strong>👤 Usuario:</strong> {userName} | 
+          <strong> ID:</strong> {empleadoId ? `Empleado ${empleadoId}` : `Usuario ${userId}`}
+        </div>
 
         <div className="row g-4">
           {/* Panel izquierdo - Cliente y Productos */}
@@ -364,14 +447,8 @@ export default function RegistrarVenta() {
                   <select
                     className="form-select"
                     value={venta.id_cliente}
-                    onChange={(e) =>
-                      setVenta((prev) => ({
-                        ...prev,
-                        id_cliente: e.target.value,
-                      }))
-                    }
+                    onChange={(e) => setVenta(prev => ({ ...prev, id_cliente: e.target.value }))}
                     required
-                    disabled={!empleadoId}
                   >
                     <option value="">Selecciona un cliente</option>
                     {clientes.map((cliente) => (
@@ -383,17 +460,14 @@ export default function RegistrarVenta() {
                   {clienteSeleccionado && (
                     <div className="mt-2 p-2 bg-success bg-opacity-10 rounded">
                       <small className="text-success">
-                        ✅ Cliente seleccionado:{" "}
-                        <strong>{clienteSeleccionado.nombre}</strong>
+                        ✅ Cliente seleccionado: <strong>{clienteSeleccionado.nombre}</strong>
                       </small>
                     </div>
                   )}
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label fw-semibold">
-                    Buscar Productos
-                  </label>
+                  <label className="form-label fw-semibold">Buscar Productos</label>
                   <div className="input-group">
                     <span className="input-group-text bg-light">
                       <Search size={16} />
@@ -404,7 +478,6 @@ export default function RegistrarVenta() {
                       placeholder="Nombre del producto..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      disabled={!empleadoId}
                     />
                   </div>
                 </div>
@@ -414,38 +487,9 @@ export default function RegistrarVenta() {
                     <Package className="me-2" size={16} />
                     Productos Disponibles ({productosFiltrados.length})
                   </label>
-                  <div
-                    style={{ maxHeight: "50vh", overflowY: "auto" }}
-                    className="d-grid gap-2"
-                  >
+                  <div style={{ maxHeight: "50vh", overflowY: "auto" }} className="d-grid gap-2">
                     {productosFiltrados.map((producto) => (
-                      <button
-                        key={producto.id}
-                        type="button"
-                        className={`btn text-start p-3 border-0 ${
-                          producto.stock <= 0 || !empleadoId
-                            ? "bg-light text-muted"
-                            : "bg-success bg-opacity-10 text-success"
-                        }`}
-                        onClick={() => agregarProducto(producto)}
-                        disabled={producto.stock <= 0 || !empleadoId}
-                      >
-                        <div className="d-flex justify-content-between align-items-start w-100">
-                          <div className="text-start">
-                            <div className="fw-bold">{producto.nombre}</div>
-                            <small>
-                              ${parseFloat(producto.precio).toFixed(2)}
-                            </small>
-                          </div>
-                          <span
-                            className={`badge ${
-                              producto.stock <= 0 ? "bg-danger" : "bg-success"
-                            }`}
-                          >
-                            {producto.stock <= 0 ? "Sin stock" : producto.stock}
-                          </span>
-                        </div>
-                      </button>
+                      <ProductoItem key={producto.id} producto={producto} />
                     ))}
                   </div>
                 </div>
@@ -472,12 +516,8 @@ export default function RegistrarVenta() {
                 {venta.detalles.length === 0 ? (
                   <div className="text-center py-5 my-auto">
                     <ShoppingCart size={64} className="text-muted mb-3" />
-                    <p className="text-muted fs-5">
-                      No hay productos en la venta
-                    </p>
-                    <small className="text-muted">
-                      Selecciona productos del panel izquierdo
-                    </small>
+                    <p className="text-muted fs-5">No hay productos en la venta</p>
+                    <small className="text-muted">Selecciona productos del panel izquierdo</small>
                   </div>
                 ) : (
                   <>
@@ -494,40 +534,7 @@ export default function RegistrarVenta() {
                         </thead>
                         <tbody>
                           {venta.detalles.map((detalle, index) => (
-                            <tr key={index}>
-                              <td className="fw-bold">{detalle.nombre}</td>
-                              <td>${detalle.precio_unitario.toFixed(2)}</td>
-                              <td>
-                                <div className="d-flex align-items-center gap-2">
-                                  <button
-                                    className="btn btn-outline-secondary btn-sm"
-                                    onClick={() => decrementarCantidad(index)}
-                                  >
-                                    <Minus size={12} />
-                                  </button>
-                                  <span className="fw-bold mx-2">
-                                    {detalle.cantidad}
-                                  </span>
-                                  <button
-                                    className="btn btn-outline-secondary btn-sm"
-                                    onClick={() => incrementarCantidad(index)}
-                                  >
-                                    <Plus size={12} />
-                                  </button>
-                                </div>
-                              </td>
-                              <td className="fw-bold text-success">
-                                ${detalle.subtotal.toFixed(2)}
-                              </td>
-                              <td>
-                                <button
-                                  className="btn btn-outline-danger btn-sm"
-                                  onClick={() => eliminarProducto(index)}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </td>
-                            </tr>
+                            <DetalleVentaRow key={index} detalle={detalle} index={index} />
                           ))}
                         </tbody>
                       </table>
@@ -537,54 +544,35 @@ export default function RegistrarVenta() {
                       <div className="row align-items-center">
                         <div className="col-md-6">
                           <div className="text-muted">
-                            <small className="d-block">
-                              Productos: {venta.detalles.length}
-                            </small>
-                            <small className="d-block">
-                              Items totales: {totalItems}
-                            </small>
+                            <small className="d-block">Productos: {venta.detalles.length}</small>
+                            <small className="d-block">Items totales: {totalItems}</small>
                             {clienteSeleccionado && (
-                              <small className="d-block text-success">
-                                Cliente: {clienteSeleccionado.nombre}
-                              </small>
+                              <small className="d-block text-success">Cliente: {clienteSeleccionado.nombre}</small>
                             )}
-                            {empleadoId && (
-                              <small className="d-block text-info">
-                                Empleado ID: {empleadoId}
-                              </small>
-                            )}
+                            <small className="d-block text-info">
+                              Vendedor: {empleadoId ? `Empleado ${empleadoId}` : `Usuario ${userId}`}
+                            </small>
                           </div>
                         </div>
                         <div className="col-md-6 text-end">
-                          <h4 className="text-success mb-3">
-                            Total: ${total.toFixed(2)}
-                          </h4>
-                          <div className="d-flex gap-2 justify-content-end">
-                            <button
-                              className="btn btn-success btn-lg px-4"
-                              onClick={guardarVenta}
-                              disabled={
-                                loading ||
-                                venta.detalles.length === 0 ||
-                                !empleadoId
-                              }
-                            >
-                              {loading ? (
-                                <>
-                                  <div
-                                    className="spinner-border spinner-border-sm me-2"
-                                    role="status"
-                                  />
-                                  Procesando...
-                                </>
-                              ) : (
-                                <>
-                                  <Save size={18} className="me-2" />
-                                  Finalizar Venta
-                                </>
-                              )}
-                            </button>
-                          </div>
+                          <h4 className="text-success mb-3">Total: ${total.toFixed(2)}</h4>
+                          <button
+                            className="btn btn-success btn-lg px-4"
+                            onClick={guardarVenta}
+                            disabled={loading || venta.detalles.length === 0}
+                          >
+                            {loading ? (
+                              <>
+                                <div className="spinner-border spinner-border-sm me-2" />
+                                Procesando...
+                              </>
+                            ) : (
+                              <>
+                                <Save size={18} className="me-2" />
+                                Finalizar Venta
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
                     </div>

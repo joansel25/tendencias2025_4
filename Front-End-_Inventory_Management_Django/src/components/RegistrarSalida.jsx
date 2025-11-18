@@ -93,8 +93,7 @@ export default function RegistrarSalida() {
   };
 
   return (
-    <div className="min-vh-100" style={{ background: "linear-gradient(135deg, #d0e6ff, #b2dfdb)" }}>
-      
+    <div className="min-vh-100" style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}>
       {/* Navbar */}
       <nav className="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
         <div className="container">

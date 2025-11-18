@@ -1,4 +1,4 @@
-// EmpleadoDashboard.jsx - VERSIÓN CORREGIDA
+// EmpleadoDashboard.jsx - VERSIÓN OPTIMIZADA
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -8,6 +8,7 @@ import {
   ClipboardList,
   BarChart3,
   ShoppingBag,
+  User
 } from "lucide-react";
 import api from "../services/api";
 
@@ -21,15 +22,18 @@ export default function EmpleadoDashboard() {
   });
   const [userName, setUserName] = useState("Empleado");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const cargarDatosDashboard = async () => {
       try {
         setLoading(true);
+        setError(null);
 
-        // Verificar autenticación
+        // Verificar autenticación y obtener datos del usuario
         const token = localStorage.getItem("access");
         const rol = localStorage.getItem("rol")?.toLowerCase();
+        const userStorage = localStorage.getItem("user");
 
         if (!token || rol !== "empleado") {
           console.log("❌ No autenticado como empleado, redirigiendo...");
@@ -37,49 +41,97 @@ export default function EmpleadoDashboard() {
           return;
         }
 
-        // Obtener información del usuario
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        setUserName(payload.username || "Empleado");
+        // ✅ Obtener información del usuario desde localStorage
+        if (userStorage) {
+          try {
+            const userParsed = JSON.parse(userStorage);
+            
+            // Establecer nombre para mostrar
+            if (userParsed.nombre) {
+              setUserName(userParsed.nombre);
+            } else if (userParsed.username) {
+              // Capitalizar el username para mejor presentación
+              const formattedName = userParsed.username
+                .split('.')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+              setUserName(formattedName);
+            }
+          } catch (parseError) {
+            console.error("Error parseando user data:", parseError);
+          }
+        }
 
-        // Cargar estadísticas
-        const [productosRes, ventasRes, movimientosRes] = await Promise.all([
-          api.get("/farmacia/productos/"),
-          api.get("/farmacia/facturasventa/"),
-          api.get("/farmacia/movimientos/"),
-        ]);
+        // ✅ Cargar estadísticas con endpoints corregidos
+        let productos = [];
+        let ventas = [];
+        let movimientos = [];
 
-        const productos = productosRes.data;
-        const ventas = ventasRes.data;
-        const movimientos = movimientosRes.data;
+        try {
+          console.log("📦 Cargando productos...");
+          const productosRes = await api.get("/farmacia/productos/");
+          productos = productosRes.data;
+          console.log("✅ Productos cargados:", productos.length);
+        } catch (error) {
+          console.error("❌ Error cargando productos:", error);
+          setError("No se pudieron cargar los productos");
+        }
+
+        try {
+          console.log("🛒 Cargando ventas...");
+          const ventasRes = await api.get("/farmacia/facturasventa/");
+          ventas = ventasRes.data;
+          console.log("✅ Ventas cargadas:", ventas.length);
+        } catch (error) {
+          console.error("❌ Error cargando ventas:", error);
+        }
+
+        try {
+          console.log("📋 Cargando movimientos...");
+          const movimientosRes = await api.get("/farmacia/movimientos/");
+          movimientos = movimientosRes.data;
+          console.log("✅ Movimientos cargados:", movimientos.length);
+        } catch (error) {
+          console.error("❌ Error cargando movimientos:", error);
+        }
 
         const hoy = new Date().toISOString().split("T")[0];
 
         // Filtrar ventas del día
-        const ventasHoy = ventas.filter((v) => v.fecha === hoy).length;
+        const ventasHoy = Array.isArray(ventas) 
+          ? ventas.filter((v) => {
+              const fechaVenta = v.fecha || v.fecha_creacion || v.created_at;
+              return fechaVenta && fechaVenta.startsWith(hoy);
+            }).length 
+          : 0;
 
         // Filtrar movimientos del día
-        const movimientosHoy = movimientos.filter(
-          (m) => m.fecha === hoy
-        ).length;
+        const movimientosHoy = Array.isArray(movimientos)
+          ? movimientos.filter((m) => {
+              const fechaMov = m.fecha || m.fecha_creacion || m.created_at;
+              return fechaMov && fechaMov.startsWith(hoy);
+            }).length
+          : 0;
 
         // Contar productos con stock bajo
-        const stockBajo = productos.filter((p) => p.stock < 10).length;
+        const stockBajo = Array.isArray(productos)
+          ? productos.filter((p) => p.stock !== undefined && p.stock < 10).length
+          : 0;
 
         setStats({
-          totalProductos: productos.length,
+          totalProductos: Array.isArray(productos) ? productos.length : 0,
           stockBajo,
           ventasHoy,
           movimientosHoy,
         });
 
       } catch (error) {
-        console.error("Error cargando dashboard:", error);
+        console.error("❌ Error general cargando dashboard:", error);
+        setError("Error al cargar los datos del dashboard");
         
         if (error.response?.status === 401 || error.response?.status === 403) {
           localStorage.clear();
           navigate("/login");
-        } else {
-          alert("Error al cargar el dashboard");
         }
       } finally {
         setLoading(false);
@@ -96,11 +148,6 @@ export default function EmpleadoDashboard() {
 
   const handleNavegarRegistrarVenta = () => {
     console.log("🔄 Navegando a /registrar-venta");
-    console.log("📊 Estado actual:", {
-      token: !!localStorage.getItem("access"),
-      rol: localStorage.getItem("rol"),
-      path: "/registrar-venta"
-    });
     navigate("/registrar-venta");
   };
 
@@ -125,20 +172,51 @@ export default function EmpleadoDashboard() {
       className="min-vh-100"
       style={{ background: "linear-gradient(135deg, #d0f0c0, #b2dfdb)" }}
     >
-      {/* Navbar */}
+      {/* Navbar Mejorada con Información del Usuario */}
       <nav className="navbar navbar-dark bg-success shadow-lg">
         <div className="container-fluid">
           <span className="navbar-brand fw-bold fs-4">
-            💊 Farmacia Salud+ | Empleado: {userName}
+            💊 Farmacia Salud+ 
           </span>
-          <button onClick={handleLogout} className="btn btn-outline-light">
-            <LogOut size={18} /> Cerrar Sesión
-          </button>
+          
+          <div className="d-flex align-items-center">
+            {/* Información del Usuario */}
+            <div className="text-white me-3 text-end">
+              <div className="fw-bold d-flex align-items-center">
+                <User size={16} className="me-1" />
+                {userName}
+              </div>
+              <small className="opacity-75">Empleado</small>
+            </div>
+            
+            <button onClick={handleLogout} className="btn btn-outline-light btn-sm">
+              <LogOut size={16} /> Cerrar Sesión
+            </button>
+          </div>
         </div>
       </nav>
 
       {/* Contenido Principal */}
       <div className="container py-4">
+        {/* Mensaje de error */}
+        {error && (
+          <div className="alert alert-warning alert-dismissible fade show" role="alert">
+            <strong>Advertencia:</strong> {error}
+            <button 
+              type="button" 
+              className="btn-close" 
+              onClick={() => setError(null)}
+            ></button>
+          </div>
+        )}
+
+        {/* Bienvenida Personalizada */}
+        <div className="text-center mb-4">
+          <h2 className="text-success fw-bold">¡Bienvenido, {userName}! 👋</h2>
+          <p className="text-muted">Panel de control - Módulo de Empleado</p>
+        </div>
+
+        {/* Resto del código permanece igual... */}
         {/* Estadísticas */}
         <div className="row g-4 mb-5">
           <div className="col-md-3">
