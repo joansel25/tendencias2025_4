@@ -22,11 +22,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-SECRET_KEY = os.environ.get('SECRET_KEY') or get_random_secret_key()
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = 'django-insecure-nhl#v+oclsu8o^7rl7i4dg7gr@$rt46s1yib*%s(_yhv0^6eu-'
 
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
-# DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1','.onrender.com']
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True
+
+ALLOWED_HOSTS = [".vercel.app", ".now.sh", '127.0.0.1', '0.0.0.0']
+
 
 # Application definition
 

@@ -40,9 +40,14 @@ class Producto(TimeStampedModel):
 class Cliente(TimeStampedModel):
     usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="clientes")
     nombre = models.CharField(max_length=150)
+<<<<<<< HEAD
     telefono = models.CharField(max_length=20)
     correo =models.EmailField(unique=True)
    
+=======
+    correo = models.EmailField(unique=True)
+    telefono = models.CharField(max_length=20, unique=True)
+>>>>>>> upstream/grupo5
 
     def __str__(self):
         return self.nombre
@@ -50,7 +55,12 @@ class Cliente(TimeStampedModel):
 class Empleado(TimeStampedModel):
     usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name="empleados")
     nombre = models.CharField(max_length=150)
+<<<<<<< HEAD
     telefono = models.CharField(max_length=20, null=True, blank=True) 
+=======
+    #correo = models.EmailField(unique=True)
+    telefono = models.CharField(max_length=20, unique=True)
+>>>>>>> upstream/grupo5
 
     def __str__(self):
         return self.nombre
@@ -94,3 +104,45 @@ class Movimiento(TimeStampedModel):
 
     def __str__(self):
         return f"Movimiento {self.id} ({self.tipo})"
+<<<<<<< HEAD
+=======
+
+# Signals para automatizaciones
+@receiver(pre_save, sender=DetalleVenta)
+def validar_stock_detalle(sender, instance, **kwargs):
+    if instance.id_producto.stock < instance.cantidad:
+        raise ValidationError(f"Stock insuficiente para {instance.id_producto.nombre}. Disponible: {instance.id_producto.stock}")
+
+@receiver(post_save, sender=DetalleVenta)
+def calcular_subtotal_detalle(sender, instance, created, **kwargs):
+    if created:
+        instance.precio_unitario = instance.id_producto.precio
+        instance.subtotal = instance.cantidad * instance.precio_unitario
+        instance.save(update_fields=['precio_unitario', 'subtotal'])
+
+@receiver(post_save, sender=DetalleVenta)
+def actualizar_total_factura(sender, instance, **kwargs):
+    factura = instance.id_factura
+    factura.total = sum(detalle.subtotal for detalle in factura.detalles.all())
+    factura.save(update_fields=["total"])
+
+@receiver(pre_save, sender=Movimiento)
+def validar_movimiento(sender, instance, **kwargs):
+    if instance.tipo == 'salida' and instance.id_producto.stock < instance.cantidad:
+        raise ValidationError(f"Stock insuficiente para salida de {instance.id_producto.nombre}.")
+    if instance.tipo == 'entrada' and not instance.id_proveedor:
+        raise ValidationError("Para entradas, debe especificar un proveedor.")
+    if instance.tipo == 'salida' and not instance.id_cliente:
+        raise ValidationError("Para salidas, debe especificar un cliente.")
+
+@receiver(post_save, sender=Movimiento)
+def actualizar_stock_movimiento(sender, instance, created, **kwargs):
+    if created:
+        producto = instance.id_producto
+        if instance.tipo == 'entrada':
+            producto.stock += instance.cantidad
+        elif instance.tipo == 'salida':
+            producto.stock -= instance.cantidad
+        producto.save()
+        print(f"Stock actualizado: {producto.nombre} = {producto.stock}")  # Debug
+>>>>>>> upstream/grupo5

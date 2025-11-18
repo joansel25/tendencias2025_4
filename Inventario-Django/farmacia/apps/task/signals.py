@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
@@ -75,10 +76,26 @@ def actualizar_stock_movimiento(sender, instance, created, **kwargs):
     """
     if created:
         producto = instance.id_producto
+=======
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from .models import Movimiento, Producto
+
+@receiver(post_save, sender=Movimiento)
+def actualizar_stock(sender, instance, created, **kwargs):
+    """
+    Actualiza automáticamente el stock del producto
+    según el tipo de movimiento (entrada, salida o ajuste).
+    """
+    if created:  # Solo cuando el movimiento es nuevo
+        producto = instance.id_producto
+
+>>>>>>> upstream/grupo5
         if instance.tipo == 'entrada':
             producto.stock += instance.cantidad
         elif instance.tipo == 'salida':
             producto.stock -= instance.cantidad
+<<<<<<< HEAD
         producto.save()
 
 @receiver(post_delete, sender=Movimiento)
@@ -111,3 +128,11 @@ def validar_factura(sender, instance, **kwargs):
     # Por ejemplo: validar que el empleado esté activo
     if instance.id_empleado and not instance.id_empleado.usuario.is_active:
         raise ValidationError("No se puede asignar una factura a un empleado inactivo")
+=======
+        elif instance.tipo == 'ajuste':
+            # Si agregas el tipo 'ajuste', puedes definir su comportamiento
+            # Por ejemplo: simplemente asignar la cantidad directamente
+            producto.stock = instance.cantidad
+
+        producto.save()
+>>>>>>> upstream/grupo5

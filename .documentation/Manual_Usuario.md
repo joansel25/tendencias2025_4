@@ -1,3 +1,6 @@
+https://prueba-de-despliegue-wyj1.onrender.com
+frontend-inventory-farmacia.netlify.app
+
 Manual de Usuario
 Sistema de Gestión de Inventarios (Farmacia)
 
