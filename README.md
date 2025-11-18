@@ -1,10 +1,6 @@
 <!-- LINK Del BACK: https://prueba-de-despliegue-wyj1.onrender.com
 LINK DEL FRONTEND : frontend-inventory-farmacia.netlify.app -->
 
-
-
-
-
 Documentación de la API – Sistema de Gestión de Inventarios (Farmacia)
 
 API REST desarrollada en Django + Django REST Framework para gestionar inventarios, productos, movimientos, ventas, usuarios y reportes PDF.
